@@ -40,7 +40,8 @@ AI Video Gen/
 ├── docs/
 │   ├── repo_evaluation.md       the 7 repos evaluated, and why
 │   ├── architecture.md          single vs hybrid, data flow, licence notes
-│   └── testing.md               the three testing layers
+│   ├── testing.md               the three testing layers
+│   └── mobile.md                running the whole thing from a phone
 ├── prompts/
 │   ├── cinematic_enrichment.md  the enrichment system prompt
 │   ├── style_presets.yaml       8 visual styles (cinematic, noir, anime, …)
@@ -110,7 +111,12 @@ echo "LTX_REPO=$(pwd)/../LTX-Video" >> .env
 python -m src.cli "a red fox in a snowstorm" --style nature_doc --dialect ltx
 ```
 
-### No GPU?
+### No GPU, or working from a phone?
+
+See [`docs/mobile.md`](docs/mobile.md) — the phone is a terminal, the work happens in a
+cloud container, and the review page publishes as an artifact you can score by tapping.
+The free hosted tier is metered in clips (roughly ten a month), so iterate on enrichment,
+not on renders.
 
 ```bash
 echo "HF_TOKEN=hf_..." >> .env       # free token: huggingface.co/settings/tokens

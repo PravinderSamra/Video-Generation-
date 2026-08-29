@@ -51,18 +51,23 @@ def _chunk(tag: bytes, data: bytes) -> bytes:
     )
 
 
-def write_png(path: Path, image: Image) -> None:
-    """Write 8-bit RGB PNG using filter type 0 for every row."""
+def encode_png(image: Image, level: int = 6) -> bytes:
+    """Encode 8-bit RGB PNG bytes using filter type 0 for every row."""
     stride = image.width * 3
     raw = b"".join(
         b"\x00" + image.pixels[y * stride : (y + 1) * stride] for y in range(image.height)
     )
-    path.write_bytes(
+    return (
         b"\x89PNG\r\n\x1a\n"
         + _chunk(b"IHDR", struct.pack(">IIBBBBB", image.width, image.height, 8, 2, 0, 0, 0))
-        + _chunk(b"IDAT", zlib.compress(raw, 6))
+        + _chunk(b"IDAT", zlib.compress(raw, level))
         + _chunk(b"IEND", b"")
     )
+
+
+def write_png(path: Path, image: Image) -> None:
+    """Write 8-bit RGB PNG to disk."""
+    path.write_bytes(encode_png(image))
 
 
 def _paeth(a: int, b: int, c: int) -> int:

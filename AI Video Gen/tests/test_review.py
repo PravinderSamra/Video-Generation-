@@ -189,6 +189,39 @@ def test_golden_set_is_lint_clean() -> None:
             print(f"        - {violation}")
 
 
+def test_report_embeds_images_from_any_directory() -> None:
+    """A report written outside the run directory must still embed its contact sheets.
+
+    Regression: the embedder resolved sheets relative to the report's destination, so
+    building into a scratch directory silently produced an image-less page.
+    """
+    print("report embeds contact sheets when built into another directory")
+    import json as _json
+    from src import pipeline
+    from src.config import GenerationRequest
+    from src.review import build_report, review_run
+
+    with tempfile.TemporaryDirectory() as runs, tempfile.TemporaryDirectory() as elsewhere:
+        pipeline.run(
+            GenerationRequest("a red fox", duration=0.5, fps=16, width=64, height=64),
+            enricher_name="passthrough", backend_name="stub", outputs_dir=Path(runs),
+        )
+        reviews = [review_run(s) for s in Path(runs).glob("*.json")]
+        check("contact sheet produced", bool(reviews and reviews[0]["sheet"]))
+
+        same = build_report(reviews, Path(runs) / "review.html").read_text()
+        away = build_report(reviews, Path(elsewhere) / "review.html").read_text()
+        check("embeds beside the runs", "data:image/png;base64," in same)
+        check("embeds from elsewhere too", "data:image/png;base64," in away)
+
+        fragment = build_report(
+            reviews, Path(elsewhere) / "frag.html", standalone=False
+        ).read_text()
+        check("artifact build omits doctype", "<!doctype" not in fragment.lower())
+        check("artifact build omits <head>", "<head>" not in fragment.lower())
+        check("artifact build keeps the title", "<title>" in fragment)
+
+
 def test_contact_sheet_geometry() -> None:
     print("contact sheet tiles frames into the expected grid")
     sheet = contact_sheet([drifting(i) for i in range(7)], columns=3, cell_width=20)
@@ -214,6 +247,7 @@ def main() -> int:
         test_detects_flat,
         test_detects_collapse,
         test_golden_set_is_lint_clean,
+        test_report_embeds_images_from_any_directory,
         test_contact_sheet_geometry,
     ):
         test()

@@ -21,6 +21,7 @@ Usage:
 
 from __future__ import annotations
 
+import base64
 import html
 import json
 import re
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import OUTPUTS_DIR
-from .imageio import Image, read_png, write_png
+from .imageio import Image, encode_png, read_png, write_png
 
 # ---------------------------------------------------------------------------
 # 1. Prompt linting
@@ -270,6 +271,27 @@ def contact_sheet(frames: list[Image], columns: int = 6, cell_width: int = 160) 
     return Image(sheet_width, sheet_height, bytes(canvas))
 
 
+# Artifact pages cap at 16 MB, and a phone on mobile data has opinions too. Budget the
+# whole embedded page well under that and divide it across however many runs there are.
+EMBED_BUDGET_BYTES = 11_000_000
+MIN_SHEET_BYTES = 120_000
+
+
+def _embed_sheet(path: Path, budget: int) -> str:
+    """Return a data URI for a contact sheet, downscaling until it fits the budget."""
+    data = path.read_bytes()
+    if len(data) <= budget:
+        return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
+
+    image = read_png(path)
+    for _ in range(6):  # halve the linear dimensions until it fits
+        image = image.resized(max(64, image.width // 2), max(40, image.height // 2))
+        data = encode_png(image)
+        if len(data) <= budget or image.width <= 64:
+            break
+    return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
+
+
 SCORECARD = [
     ("Prompt adherence", "Is everything the prompt asked for actually present?"),
     ("Subject coherence", "Does the subject hold its shape and identity across all frames?"),
@@ -291,7 +313,8 @@ def review_run(sidecar: Path, extract: bool = True) -> dict[str, Any]:
         "record": record,
         "lint": {"ok": lint.ok, "violations": lint.violations, "word_count": lint.word_count},
         "metrics": None,
-        "sheet": None,
+        "sheet": None,        # filename, for relative linking beside the sidecar
+        "sheet_path": None,   # absolute, so a report built elsewhere can still embed
         "error": None,
     }
 
@@ -306,105 +329,277 @@ def review_run(sidecar: Path, extract: bool = True) -> dict[str, Any]:
         sheet_path = sidecar.with_name(f"{sidecar.stem}-sheet.png")
         write_png(sheet_path, contact_sheet(frames))
         review["sheet"] = sheet_path.name
+        review["sheet_path"] = str(sheet_path)
     except Exception as exc:  # a bad clip must not abort the whole report
         review["error"] = f"{type(exc).__name__}: {exc}"
 
     return review
 
 
-def build_report(reviews: list[dict[str, Any]], destination: Path) -> Path:
-    """Write a self-contained HTML page for side-by-side human review."""
-    blocks = []
-    for review in reviews:
+PAGE_STYLES = """
+<style>
+:root{
+  --ground:#f4f3f0; --surface:#fbfaf8; --surface-2:#edebe6;
+  --ink:#16181c; --ink-2:#5c5f66; --ink-3:#8b8e95; --line:#dcd9d3;
+  --accent:#b3701a; --pass:#2f6f4a; --flag:#a63a26;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#131417; --surface:#1a1c20; --surface-2:#23262b;
+    --ink:#e8e6e2; --ink-2:#a2a5ac; --ink-3:#71757d; --line:#2c3037;
+    --accent:#d99a3e; --pass:#5aa87a; --flag:#d4705c;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#131417; --surface:#1a1c20; --surface-2:#23262b;
+  --ink:#e8e6e2; --ink-2:#a2a5ac; --ink-3:#71757d; --line:#2c3037;
+  --accent:#d99a3e; --pass:#5aa87a; --flag:#d4705c;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:880px; margin:0 auto; padding:2rem 1.1rem 4rem; display:flex;
+      flex-direction:column; gap:1.1rem}
+header{border-bottom:2px solid var(--ink); padding-bottom:.9rem; margin-bottom:.4rem}
+h1{font-size:1.55rem; font-weight:700; letter-spacing:-.02em; margin:0 0 .3rem;
+   text-wrap:balance}
+.lede{color:var(--ink-2); font-size:.9rem; margin:0; max-width:60ch}
+.tally{font-family:"JetBrains Mono",ui-monospace,monospace; font-size:.75rem;
+       color:var(--ink-3); margin-top:.55rem; font-variant-numeric:tabular-nums}
+.take{background:var(--surface); border:1px solid var(--line); border-radius:4px;
+      overflow:hidden}
+.slate{display:flex; flex-wrap:wrap; align-items:baseline; gap:.5rem .9rem;
+       background:var(--surface-2); border-bottom:1px solid var(--line);
+       padding:.6rem .95rem; font-family:"JetBrains Mono",ui-monospace,monospace;
+       font-size:.72rem; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.slate .id{color:var(--ink); font-weight:700; letter-spacing:.02em}
+.slate .sep{color:var(--ink-3)}
+.status{margin-left:auto; display:flex; gap:.4rem}
+.chip{font-size:.65rem; letter-spacing:.06em; text-transform:uppercase;
+      padding:.15rem .45rem; border-radius:2px; font-weight:700}
+.chip.pass{background:color-mix(in srgb,var(--pass) 16%,transparent); color:var(--pass)}
+.chip.flag{background:color-mix(in srgb,var(--flag) 16%,transparent); color:var(--flag)}
+.body{padding:1rem .95rem 1.1rem; display:flex; flex-direction:column; gap:.85rem}
+.in{font-size:.8rem; color:var(--ink-3); font-family:"JetBrains Mono",ui-monospace,monospace}
+.in b{color:var(--ink-2); font-weight:500}
+.out{font-family:"Source Serif 4",Georgia,serif; font-size:1.02rem; line-height:1.62;
+     margin:0; padding-left:.9rem; border-left:2px solid var(--accent); max-width:64ch}
+.count{font-family:"JetBrains Mono",ui-monospace,monospace; font-size:.7rem;
+       color:var(--ink-3); display:block; margin-top:.45rem; padding-left:0}
+.findings{margin:0; padding:.6rem .8rem .6rem 1.9rem; list-style:square;
+          background:color-mix(in srgb,var(--flag) 8%,transparent);
+          border-left:2px solid var(--flag); font-size:.85rem; color:var(--ink)}
+.findings li::marker{color:var(--flag)}
+.metrics{display:flex; flex-wrap:wrap; gap:.15rem 1.2rem;
+         font-family:"JetBrains Mono",ui-monospace,monospace; font-size:.72rem;
+         color:var(--ink-2); font-variant-numeric:tabular-nums}
+.metrics b{color:var(--ink-3); font-weight:400}
+figure{margin:0}
+figure img{display:block; width:100%; border:1px solid var(--line); border-radius:2px}
+figcaption{font-size:.7rem; color:var(--ink-3); margin-top:.35rem;
+           font-family:"JetBrains Mono",ui-monospace,monospace}
+.score{border-top:1px solid var(--line); padding-top:.8rem; display:flex;
+       flex-direction:column; gap:.1rem}
+.score h3{font-size:.68rem; text-transform:uppercase; letter-spacing:.1em;
+          color:var(--ink-3); margin:0 0 .45rem; font-weight:700}
+.row{display:flex; align-items:center; gap:.7rem; padding:.28rem 0}
+.row .label{flex:1; min-width:0}
+.row .name{font-size:.85rem; display:block}
+.row .hint{font-size:.72rem; color:var(--ink-3); display:block; line-height:1.35}
+.dots{display:flex; gap:.28rem; flex-shrink:0}
+.dot{width:1.35rem; height:1.35rem; border-radius:50%; border:1px solid var(--line);
+     background:transparent; cursor:pointer; padding:0;
+     font-family:"JetBrains Mono",ui-monospace,monospace; font-size:.65rem;
+     color:var(--ink-3); line-height:1; transition:background .12s,color .12s}
+.dot:hover{border-color:var(--accent)}
+.dot:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.dot[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--ground)}
+.muted{color:var(--ink-3); font-size:.85rem; margin:0}
+@media (max-width:560px){
+  .wrap{padding:1.4rem .8rem 3rem}
+  .row{flex-wrap:wrap; gap:.3rem .7rem}
+  .row .label{flex:1 1 100%}
+  .status{margin-left:0; flex-basis:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+"""
+
+SCORE_SCRIPT = """
+<script>
+// Scores persist per viewer so a review survives a scroll or a reload on a phone.
+// Storage can throw (private windows, blocked site data), so every access is guarded.
+(function () {
+  var KEY = 'aivg-scores';
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+  }
+  function save(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* fine */ }
+  }
+  var state = load();
+  document.querySelectorAll('.dot').forEach(function (dot) {
+    var key = dot.dataset.key;
+    if (state[key] === Number(dot.dataset.value)) dot.setAttribute('aria-pressed', 'true');
+    dot.addEventListener('click', function () {
+      var value = Number(dot.dataset.value);
+      state[key] = state[key] === value ? 0 : value;
+      save(state);
+      dot.parentElement.querySelectorAll('.dot').forEach(function (sibling) {
+        sibling.setAttribute('aria-pressed',
+          String(Number(sibling.dataset.value) === state[key]));
+      });
+    });
+  });
+})();
+</script>
+"""
+
+
+def build_report(
+    reviews: list[dict[str, Any]],
+    destination: Path,
+    embed: bool = True,
+    standalone: bool = True,
+) -> Path:
+    """Write an HTML review page.
+
+    embed=True inlines contact sheets as data URIs, so the single file is portable:
+    publishable as an Artifact, openable on a phone, and able to outlive this container.
+    standalone=False omits the document scaffolding, for publishing as an Artifact
+    (which supplies its own charset, viewport, and wrapper).
+    """
+    with_sheets = max(1, sum(1 for r in reviews if r["sheet"]))
+    per_sheet_budget = max(MIN_SHEET_BYTES, EMBED_BUDGET_BYTES // with_sheets)
+
+    takes = []
+    for index, review in enumerate(reviews):
         record = review["record"]
         enrichment = record.get("enrichment", {})
         request = record.get("request", {})
         render = record.get("render") or {}
         lint = review["lint"]
         metrics = review["metrics"]
+        flags = (metrics or {}).get("flags", [])
 
-        badges = [
-            f'<span class="badge {"ok" if lint["ok"] else "bad"}">'
-            f'prompt {"clean" if lint["ok"] else str(len(lint["violations"])) + " issues"}</span>'
+        chips = [
+            f'<span class="chip {"pass" if lint["ok"] else "flag"}">'
+            f'prompt {"ok" if lint["ok"] else str(len(lint["violations"]))}</span>'
         ]
         if metrics:
-            flags = metrics["flags"]
-            badges.append(
-                f'<span class="badge {"ok" if not flags else "bad"}">'
-                f'video {"clean" if not flags else str(len(flags)) + " flags"}</span>'
+            chips.append(
+                f'<span class="chip {"pass" if not flags else "flag"}">'
+                f'video {"ok" if not flags else str(len(flags))}</span>'
             )
 
-        problems = "".join(f"<li>{html.escape(v)}</li>" for v in lint["violations"])
-        problems += "".join(
-            f"<li>{html.escape(f)}</li>" for f in (metrics["flags"] if metrics else [])
-        )
+        findings = lint["violations"] + list(flags)
         if review["error"]:
-            problems += f"<li>{html.escape(review['error'])}</li>"
+            findings.append(review["error"])
+        findings_html = (
+            f'<ul class="findings">'
+            + "".join(f"<li>{html.escape(str(f))}</li>" for f in findings)
+            + "</ul>"
+        ) if findings else ""
 
-        stats = ""
+        metrics_html = ""
         if metrics:
-            stats = (
-                f'<div class="stats">frames {metrics["frame_count"]} · '
-                f'motion {metrics["mean_delta"]:.4f} · peak {metrics["max_delta"]:.4f} · '
-                f'detail {metrics["mean_detail"]:.4f} · frozen {metrics["frozen_frames"]}</div>'
+            metrics_html = (
+                '<div class="metrics">'
+                f'<span><b>frames</b> {metrics["frame_count"]}</span>'
+                f'<span><b>motion</b> {metrics["mean_delta"]:.4f}</span>'
+                f'<span><b>peak</b> {metrics["max_delta"]:.4f}</span>'
+                f'<span><b>detail</b> {metrics["mean_detail"]:.4f}</span>'
+                f'<span><b>frozen</b> {metrics["frozen_frames"]}</span>'
+                "</div>"
             )
 
-        sheet = (
-            f'<img src="{html.escape(review["sheet"])}" alt="contact sheet">'
-            if review["sheet"] else '<p class="muted">no contact sheet — video not rendered</p>'
-        )
-        scorecard = "".join(
-            f"<tr><td>{html.escape(name)}</td><td class='muted'>{html.escape(hint)}</td>"
-            f"<td class='score'>&nbsp;/5</td></tr>"
-            for name, hint in SCORECARD
-        )
+        figure = '<p class="muted">No contact sheet &mdash; this run was not rendered.</p>'
+        if review["sheet"]:
+            source = html.escape(review["sheet"])
+            if embed:
+                sheet_file = Path(review.get("sheet_path") or (destination.parent / review["sheet"]))
+                if sheet_file.is_file():
+                    source = _embed_sheet(sheet_file, per_sheet_budget)
+            figure = (
+                f'<figure><img src="{source}" alt="Contact sheet of sampled frames">'
+                f'<figcaption>sampled frames, left to right</figcaption></figure>'
+            )
 
-        blocks.append(f"""
-<section>
-  <h2>{html.escape(review["name"])} {"".join(badges)}</h2>
-  <div class="meta">
-    {html.escape(str(enrichment.get("provider")))} &rarr;
-    {html.escape(str(render.get("backend", "not rendered")))}
-    &nbsp;·&nbsp; {html.escape(str(request.get("style")))}
-    &nbsp;·&nbsp; seed {html.escape(str(request.get("seed")))}
-    &nbsp;·&nbsp; {html.escape(str(request.get("width")))}&times;{html.escape(str(request.get("height")))}
-    &nbsp;·&nbsp; {html.escape(str(request.get("num_frames")))} frames
+        rows = []
+        for criterion, hint in SCORECARD:
+            key = f"{index}:{criterion}"
+            dots = "".join(
+                f'<button class="dot" type="button" aria-pressed="false" '
+                f'data-key="{html.escape(key)}" data-value="{value}" '
+                f'aria-label="{html.escape(criterion)}: {value} out of 5">{value}</button>'
+                for value in range(1, 6)
+            )
+            rows.append(
+                f'<div class="row"><span class="label">'
+                f'<span class="name">{html.escape(criterion)}</span>'
+                f'<span class="hint">{html.escape(hint)}</span></span>'
+                f'<span class="dots">{dots}</span></div>'
+            )
+
+        takes.append(f"""
+<article class="take">
+  <div class="slate">
+    <span class="id">{html.escape(review["name"])}</span>
+    <span class="sep">/</span><span>{html.escape(str(request.get("style")))}</span>
+    <span class="sep">/</span><span>seed {html.escape(str(request.get("seed")))}</span>
+    <span class="sep">/</span><span>{html.escape(str(request.get("width")))}&times;{html.escape(str(request.get("height")))}</span>
+    <span class="sep">/</span><span>{html.escape(str(request.get("num_frames")))}f</span>
+    <span class="sep">/</span><span>{html.escape(str(enrichment.get("provider")))}
+      &rarr; {html.escape(str(render.get("backend", "not rendered")))}</span>
+    <span class="status">{"".join(chips)}</span>
   </div>
-  <p class="original"><strong>Original:</strong> {html.escape(enrichment.get("original", ""))}</p>
-  <p class="enriched">{html.escape(enrichment.get("enriched", ""))}
-     <span class="muted">({lint["word_count"]} words)</span></p>
-  {f'<ul class="problems">{problems}</ul>' if problems else ''}
-  {stats}
-  {sheet}
-  <table class="scorecard"><tbody>{scorecard}</tbody></table>
-</section>""")
+  <div class="body">
+    <p class="in"><b>in</b> &nbsp;{html.escape(enrichment.get("original", ""))}</p>
+    <p class="out">{html.escape(enrichment.get("enriched", ""))}
+      <span class="count">{lint["word_count"]} words</span></p>
+    {findings_html}
+    {metrics_html}
+    {figure}
+    <div class="score"><h3>Score by eye</h3>{"".join(rows)}</div>
+  </div>
+</article>""")
 
     clean = sum(1 for r in reviews if r["lint"]["ok"] and not (r["metrics"] or {}).get("flags"))
-    page = f"""<!doctype html>
-<meta charset="utf-8"><title>AI Video Gen — review</title>
-<style>
- body{{font:15px/1.6 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1.5rem;
-       color:#1a1a1a;background:#fafafa}}
- h1{{margin-bottom:.2rem}} h2{{font-size:1.05rem;margin:0 0 .4rem}}
- section{{background:#fff;border:1px solid #e3e3e3;border-radius:10px;padding:1.2rem;margin:1.2rem 0}}
- .meta{{font-size:.85rem;color:#666;margin-bottom:.8rem}}
- .original{{color:#555;font-size:.9rem}} .enriched{{background:#f4f7fb;padding:.7rem .9rem;border-radius:6px}}
- .muted{{color:#888;font-weight:400}}
- .badge{{font-size:.7rem;padding:.15rem .5rem;border-radius:99px;margin-left:.5rem;vertical-align:middle}}
- .badge.ok{{background:#e3f5e8;color:#1c6b33}} .badge.bad{{background:#fdeaea;color:#a12626}}
- .problems{{background:#fdf6f6;border-left:3px solid #d97070;padding:.6rem 1.2rem;margin:.8rem 0;
-            font-size:.88rem;color:#8a2b2b}}
- .stats{{font-family:ui-monospace,monospace;font-size:.8rem;color:#555;margin:.6rem 0}}
- img{{max-width:100%;border-radius:6px;border:1px solid #ddd;margin-top:.5rem}}
- .scorecard{{width:100%;border-collapse:collapse;margin-top:1rem;font-size:.85rem}}
- .scorecard td{{border-top:1px solid #eee;padding:.4rem .3rem}}
- .score{{text-align:right;color:#aaa;font-family:ui-monospace,monospace;width:4rem}}
-</style>
-<h1>AI Video Gen — review</h1>
-<p class="muted">{len(reviews)} run(s) · {clean} with no automated findings.
-Automated checks catch failure modes only; the scorecard is for the part that needs eyes.</p>
-{''.join(blocks)}
+    rendered = sum(1 for r in reviews if r["sheet"])
+
+    fonts = (
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
+        "family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&"
+        'family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">'
+    )
+
+    content = f"""{fonts}
+<title>Dailies &mdash; AI Video Gen</title>
+{PAGE_STYLES}
+<div class="wrap">
+  <header>
+    <h1>Dailies</h1>
+    <p class="lede">Every take from the benchmark, with its prompt and sampled frames.
+      The automated checks catch failure modes only &mdash; a take can pass all of them
+      and still be wrong. Scoring is the part that needs your eyes.</p>
+    <p class="tally">{len(reviews)} takes &middot; {rendered} rendered &middot;
+      {clean} with no automated findings</p>
+  </header>
+  {"".join(takes)}
+</div>
+{SCORE_SCRIPT}
 """
+
+    page = content if not standalone else (
+        '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+        f'{content}\n</head>\n</html>\n'
+    )
     destination.write_text(page, encoding="utf-8")
     return destination
 
@@ -416,6 +611,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("directory", nargs="?", default=str(OUTPUTS_DIR))
     parser.add_argument("--lint-only", action="store_true",
                         help="check prompts only; skip frame extraction")
+    parser.add_argument("--no-embed", action="store_true",
+                        help="link contact sheets instead of inlining them (smaller file, "
+                             "but no longer portable off this machine)")
     args = parser.parse_args(argv)
 
     directory = Path(args.directory)
@@ -434,8 +632,10 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(f"  - {problem}")
 
-    report = build_report(reviews, directory / "review.html")
-    print(f"\nReport: {report}")
+    report = build_report(reviews, directory / "review.html", embed=not args.no_embed)
+    size = report.stat().st_size
+    print(f"\nReport: {report}  ({size / 1024:.0f} KB"
+          f"{', self-contained' if not args.no_embed else ''})")
     return 0
 
 
