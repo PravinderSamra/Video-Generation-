@@ -20,9 +20,17 @@ Worth internalising before you start, because they shape everything else.
 `outputs/` is gone. Whatever matters has to be committed and pushed, sent to you as a
 file, or published as an artifact — *during* the session.
 
-**2. Free hosted video is metered in clips, not hours.** The Hugging Face free tier is
-100K Inference Provider credits per month, which is on the order of **under ten video
-clips**. That is enough to prove the path end to end. It is not an iteration loop.
+**2. The free tier is smaller than it sounds — and text is not free either.**
+Measured, not estimated: **roughly 14 enrichment calls exhausted a full month of the
+100K-credit free tier.** No video was generated at all. Two things drive this:
+
+- A reasoning model (Qwen3-8B, the default) spends most of its output budget thinking.
+  One enrichment measured 799 prompt + 613 completion tokens, of which ~350 words were
+  reasoning that gets discarded.
+- Credits are not tokens. The router prices per request and per provider, so a short
+  call is not proportionally cheap.
+
+Plan for a handful of calls per month on the free tier, not a loop.
 
 **3. Do not paste secrets into the chat.** Anything typed into the conversation is in the
 transcript. Set `HF_TOKEN` as an **environment variable on the environment itself**,
@@ -41,18 +49,26 @@ up from `os.environ` with no token ever appearing in a message.
 
 ## The loop that actually works on a phone
 
-Spend your free credits on *video*, never on text. Enrichment through `hf` is cheap and
-text-only, so iterate there freely; every video render is a meaningful fraction of your
-monthly allowance.
+Use the Claude session itself as the enricher. It is the one capable model already in
+front of you on a phone, it costs no Inference Provider credits, and its output goes
+straight into the same pipeline through `--enricher fixture`:
+
+1. Ask the session to enrich your prompts against `prompts/cinematic_enrichment.md`.
+2. It saves them into `prompts/golden_enrichments.yaml` (or your own fixture file).
+3. `python -m src.review --lint-only` checks them against every template rule.
+4. Iterate on the wording as many times as you like. **Zero credits.**
 
 ```bash
-# Free and unmetered in practice — iterate here as much as you like
-python -m src.benchmark --dry-run --enricher hf
+python -m src.benchmark --dry-run --enricher fixture   # free, deterministic
 python -m src.review outputs/benchmark --lint-only
 
-# Metered. One clip. Only once the prompt above is one you would pay for.
-python -m src.cli "…" --enricher hf --backend hf --width 512 --height 320 --duration 3
+# Spend credits only here, and only on a prompt you would pay for
+python -m src.cli "…" --enricher fixture --backend hf --width 512 --height 320 --duration 3
 ```
+
+Reserve `--enricher hf` for what it is genuinely for: sampling how a *different* model
+interprets the template, a few prompts at a time, when you want to know whether a rule
+is carrying its weight. It is a measuring instrument, not the daily loop.
 
 ## Reviewing on a phone
 
@@ -78,8 +94,9 @@ It will, quickly. In rough order of what to reach for:
 - **ZeroGPU Spaces** — free A100 time on accounts with no payment method, with a daily
   quota, callable with your token. Volatile: Spaces appear, change and disappear, so
   treat any specific one as temporary.
-- **Hugging Face PRO ($9/mo)** — 2M credits and a ZeroGPU quota. The cheapest way to make
-  this a real loop rather than a demo.
+- **Hugging Face PRO ($9/mo)** — 2M credits (20x) and a ZeroGPU quota. On the measured
+  free-tier rate this is the difference between a handful of calls and a working loop,
+  and it is the cheapest thing on this list.
 - **A rented GPU by the hour** — once you are rendering seriously, an hour of a rented
   card beats a month of hosted credits, and it unlocks the `ltx` and `wan2gp` backends
   that this project is actually built around.

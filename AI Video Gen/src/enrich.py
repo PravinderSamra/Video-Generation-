@@ -48,6 +48,13 @@ def build_system_prompt(request: GenerationRequest) -> str:
     )
 
 
+# Reasoning models (Qwen3, DeepSeek-R1 and friends) spend most of their budget thinking
+# before emitting a single word of the answer. Measured against Qwen3-8B on the HF router:
+# ~350 words of reasoning preceded a 93-word prompt, for 613 completion tokens total.
+# A 500-token cap truncated the answer mid-sentence, or returned content=None outright.
+MAX_COMPLETION_TOKENS = 2000
+
+
 def _chat_completion(
     base_url: str,
     model: str,
@@ -69,7 +76,7 @@ def _chat_completion(
                 {"role": "user", "content": user},
             ],
             "temperature": 0.8,
-            "max_tokens": 500,
+            "max_tokens": MAX_COMPLETION_TOKENS,
             "stream": False,
         }
     ).encode("utf-8")
@@ -91,9 +98,32 @@ def _chat_completion(
         raise EnrichmentError(f"cannot reach {base_url}: {exc}") from exc
 
     try:
-        return body["choices"][0]["message"]["content"].strip()
+        choice = body["choices"][0]
+        message = choice["message"]
     except (KeyError, IndexError) as exc:
         raise EnrichmentError(f"unexpected response shape from {base_url}: {body}") from exc
+
+    # A truncated prompt is worse than no prompt: it reads as valid, renders as nonsense,
+    # and on a metered backend it costs a real video credit to discover. Refuse it.
+    if choice.get("finish_reason") == "length":
+        raise EnrichmentError(
+            f"{model} hit the {MAX_COMPLETION_TOKENS}-token cap before finishing. "
+            "Reasoning models burn most of their budget thinking — raise "
+            "MAX_COMPLETION_TOKENS in src/enrich.py, or set HF_TEXT_MODEL to a "
+            "non-reasoning instruct model."
+        )
+
+    content = (message.get("content") or "").strip()
+    if not content:
+        # Reasoning models put their scratchpad in a separate field and can return an
+        # empty content when the budget runs out mid-thought.
+        thinking = (message.get("reasoning_content") or message.get("reasoning") or "")
+        hint = (
+            f" It emitted {len(thinking.split())} words of reasoning and no answer."
+            if thinking else ""
+        )
+        raise EnrichmentError(f"{model} returned empty content.{hint}")
+    return content
 
 
 def _clean(text: str) -> str:

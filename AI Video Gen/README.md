@@ -115,8 +115,9 @@ python -m src.cli "a red fox in a snowstorm" --style nature_doc --dialect ltx
 
 See [`docs/mobile.md`](docs/mobile.md) — the phone is a terminal, the work happens in a
 cloud container, and the review page publishes as an artifact you can score by tapping.
-The free hosted tier is metered in clips (roughly ten a month), so iterate on enrichment,
-not on renders.
+Measured: roughly 14 enrichment calls exhaust a month of the HF free tier, before any
+video at all. On a phone, use the Claude session as the enricher and spend credits only
+on renders.
 
 ```bash
 echo "HF_TOKEN=hf_..." >> .env       # free token: huggingface.co/settings/tokens

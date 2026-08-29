@@ -42,6 +42,11 @@ Cover every one of these, woven into flowing prose — never as a bulleted list:
 - **One shot only.** No cuts, no "then", no "meanwhile". Multi-shot prompts produce
   incoherent morphing.
 - **No text, captions, watermarks, or UI** in the described scene.
+- **Describe only what a camera can see.** A video model renders light, not sound, smell
+  or taste. "The scent of sizzling meat", "a child's laugh echoes", "the hum of the
+  wheel" are wasted words — and in a length-capped prompt they displace the visual
+  detail that would actually change the frame. Convert them: sound becomes the visible
+  cause of the sound (steam off the grill, an open mouth mid-laugh, a blur of spokes).
 - Preserve every concrete element the user specified. Enrich around their idea; do not
   replace it. If they said "fox", the output has a fox in it.
 - Return **only the paragraph**. No preamble, no explanation, no quotation marks,

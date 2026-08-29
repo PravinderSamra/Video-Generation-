@@ -69,6 +69,18 @@ GOOD = (
 )
 
 
+def test_hear_pattern_does_not_match_heartbeat() -> None:
+    """Regression: a loose `hear\\w*` matched "heartbeat" in real model output."""
+    print("non-visual rule does not fire on visual words that merely start the same")
+    for word, phrase in (
+        ("heartbeat", "its heartbeat visible in the fur at its throat"),
+        ("musician", "a street musician leaning against the wall"),
+        ("heartland", "the open heartland stretching to the horizon"),
+    ):
+        violations = " ".join(lint_prompt(GOOD.replace("Muted palette", phrase + ", muted palette")).violations)
+        check(f"{word} not flagged", "non-visual" not in violations)
+
+
 def test_lint_accepts_good_prompt() -> None:
     print("linter accepts a well-formed enriched prompt")
     result = lint_prompt(GOOD, "a red fox in the snow")
@@ -92,6 +104,9 @@ def test_lint_catches_each_rule() -> None:
          GOOD.replace("Overcast daylight", "Cut to overcast daylight"), "multi-shot"),
         ("line break", GOOD.replace("The camera", "\nThe camera"), "single paragraph"),
         ("markdown", "```\n" + GOOD + "\n```", "markdown"),
+        ("non-visual sense",
+         GOOD.replace("Muted palette", "The scent of pine and a distant wail carry across, muted palette"),
+         "non-visual sense"),
     ]
     for name, text, expected in cases:
         violations = " ".join(lint_prompt(text).violations)
@@ -99,10 +114,35 @@ def test_lint_catches_each_rule() -> None:
 
 
 def test_lint_catches_dropped_subject() -> None:
-    print("linter catches enrichment that abandons the user's idea")
-    violations = " ".join(lint_prompt(GOOD, "a red fox and a golden eagle").violations)
-    check("dropped 'eagle' reported", "eagle" in violations)
-    check("kept 'fox' not reported", "fox" not in violations)
+    print("linter advises (does not fail) on words the enrichment did not carry over")
+    result = lint_prompt(GOOD, "a red fox and a golden eagle")
+    advisories = " ".join(result.advisories)
+    check("dropped 'eagle' reported", "eagle" in advisories)
+    check("kept 'fox' not reported", "fox" not in advisories)
+    check("reported as advisory, not violation", not result.violations)
+    check("prompt still counts as ok", result.ok)
+
+
+def test_advisory_does_not_fail_a_semantic_paraphrase() -> None:
+    """Real HF output that paraphrased rather than repeated must not read as a failure.
+
+    Qwen3-8B rendered "hunting in a snowstorm" as "paws at snowdrifts ... locks onto
+    prey ... the storm's swirling snow". The idea survived; the words did not. That is
+    an advisory for a human to judge, never a rule break.
+    """
+    print("a semantic paraphrase is advisory, not a violation")
+    paraphrase = (
+        "A lean red fox with a thick frost-tipped coat paws at deep snowdrifts on an open "
+        "tundra, amber eye locking onto prey shivering beneath the white crust before it "
+        "drops its shoulders to pounce. A 200mm telephoto holds a low medium shot, the "
+        "storm's swirling snow compressed into a creamy grey wall behind it. Flat overcast "
+        "light wraps the scene while ice crystals streak past the lens in slow motion. "
+        "Rust orange, bone white, slate grey and pale blue, on 35mm film with fine grain "
+        "and shallow depth of field."
+    )
+    result = lint_prompt(paraphrase, "a red fox hunting in a snowstorm")
+    check(f"no violations (got {result.violations})", result.ok)
+    check("flagged for human attention", bool(result.advisories))
 
 
 # --- video failure detection ------------------------------------------------
@@ -237,9 +277,11 @@ def test_contact_sheet_geometry() -> None:
 
 def main() -> int:
     for test in (
+        test_hear_pattern_does_not_match_heartbeat,
         test_lint_accepts_good_prompt,
         test_lint_catches_each_rule,
         test_lint_catches_dropped_subject,
+        test_advisory_does_not_fail_a_semantic_paraphrase,
         test_healthy_clip_is_clean,
         test_detects_frozen,
         test_detects_flicker,

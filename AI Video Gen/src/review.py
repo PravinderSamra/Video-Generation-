@@ -60,6 +60,16 @@ MULTI_SHOT = re.compile(
     re.I,
 )
 LEFTOVER_MARKUP = re.compile(r"(```|^[-*#>]\s|\*\*)", re.M)
+# Sound, smell and taste. A video model renders light only, so these words buy nothing
+# and cost length. Word-final boundaries are explicit: a loose `hear\w*` matches
+# "heartbeat", and "music"/"musician" is usually a visible subject, so it stays out.
+NON_VISUAL = re.compile(
+    r"\b(hears?|heard|hearing|sounds?|audible|hums?|humming|laughs?|laughter|"
+    r"echo(?:es|ing|ed)?|whispers?|whispering|murmurs?|murmuring|wails?|wailing|"
+    r"clatters?|clattering|crackl(?:e|es|ing)|rustl(?:e|es|ing)|"
+    r"scents?|smells?|aromas?|fragranc(?:e|es)|odou?rs?|tastes?)\b",
+    re.I,
+)
 
 STOPWORDS = {
     "a", "an", "the", "in", "on", "at", "of", "and", "or", "with", "to", "for",
@@ -69,11 +79,25 @@ STOPWORDS = {
 
 @dataclass
 class LintResult:
+    """Objective rule breaks and approximate findings, kept apart on purpose.
+
+    `violations` are mechanically checkable against the template: word count, paragraph
+    count, banned constructions. If one fires, the prompt genuinely breaks a stated rule.
+
+    `advisories` come from heuristics that cannot be exact — chiefly whether the user's
+    idea survived, which is a semantic question answered with a lexical test. A model
+    that turns "hunting in a snowstorm" into "paws at snowdrifts ... locks onto prey"
+    has preserved the idea while dropping both words. Mixing that into `violations`
+    would make the linter cry wolf, and a linter that cries wolf gets ignored.
+    """
+
     violations: list[str] = field(default_factory=list)
+    advisories: list[str] = field(default_factory=list)
     word_count: int = 0
 
     @property
     def ok(self) -> bool:
+        """True when no objective rule is broken. Advisories are for human attention."""
         return not self.violations
 
 
@@ -98,6 +122,7 @@ def lint_prompt(enriched: str, original: str = "") -> LintResult:
         ("operator instruction (describe the scene, not the task)", INSTRUCTIONS),
         ("multi-shot marker (one continuous shot only)", MULTI_SHOT),
         ("leftover markdown", LEFTOVER_MARKUP),
+        ("non-visual sense (a camera renders light, not sound or smell)", NON_VISUAL),
     ):
         found = pattern.findall(enriched)
         if found:
@@ -113,7 +138,10 @@ def lint_prompt(enriched: str, original: str = "") -> LintResult:
         lowered = enriched.lower()
         dropped = sorted(w for w in subject_words if w[:5] not in lowered)
         if dropped:
-            result.violations.append(f"dropped from the original prompt: {', '.join(dropped)}")
+            # Lexical test for a semantic property — advisory, and phrased as a question.
+            result.advisories.append(
+                f"not carried over literally: {', '.join(dropped)} — check the idea survived"
+            )
 
     return result
 
@@ -311,7 +339,12 @@ def review_run(sidecar: Path, extract: bool = True) -> dict[str, Any]:
     review: dict[str, Any] = {
         "name": sidecar.stem,
         "record": record,
-        "lint": {"ok": lint.ok, "violations": lint.violations, "word_count": lint.word_count},
+        "lint": {
+            "ok": lint.ok,
+            "violations": lint.violations,
+            "advisories": lint.advisories,
+            "word_count": lint.word_count,
+        },
         "metrics": None,
         "sheet": None,        # filename, for relative linking beside the sidecar
         "sheet_path": None,   # absolute, so a report built elsewhere can still embed
@@ -393,6 +426,10 @@ h1{font-size:1.55rem; font-weight:700; letter-spacing:-.02em; margin:0 0 .3rem;
           background:color-mix(in srgb,var(--flag) 8%,transparent);
           border-left:2px solid var(--flag); font-size:.85rem; color:var(--ink)}
 .findings li::marker{color:var(--flag)}
+.advisories{margin:0; padding:.6rem .8rem .6rem 1.9rem; list-style:square;
+            background:color-mix(in srgb,var(--accent) 8%,transparent);
+            border-left:2px solid var(--accent); font-size:.85rem; color:var(--ink)}
+.advisories li::marker{color:var(--accent)}
 .metrics{display:flex; flex-wrap:wrap; gap:.15rem 1.2rem;
          font-family:"JetBrains Mono",ui-monospace,monospace; font-size:.72rem;
          color:var(--ink-2); font-variant-numeric:tabular-nums}
@@ -496,6 +533,7 @@ def build_report(
             )
 
         findings = lint["violations"] + list(flags)
+        advisories = lint.get("advisories", [])
         if review["error"]:
             findings.append(review["error"])
         findings_html = (
@@ -503,6 +541,12 @@ def build_report(
             + "".join(f"<li>{html.escape(str(f))}</li>" for f in findings)
             + "</ul>"
         ) if findings else ""
+        if advisories:
+            findings_html += (
+                '<ul class="advisories">'
+                + "".join(f"<li>{html.escape(str(a))}</li>" for a in advisories)
+                + "</ul>"
+            )
 
         metrics_html = ""
         if metrics:
@@ -627,10 +671,15 @@ def main(argv: list[str] | None = None) -> int:
     for review in reviews:
         flags = (review["metrics"] or {}).get("flags", [])
         problems = review["lint"]["violations"] + flags
+        advisories = review["lint"].get("advisories", [])
         status = "ok" if not problems else f"{len(problems)} finding(s)"
+        if not problems and advisories:
+            status = f"ok ({len(advisories)} advisory)"
         print(f"{review['name']:52} {status}")
         for problem in problems:
-            print(f"  - {problem}")
+            print(f"  ! {problem}")
+        for advisory in advisories:
+            print(f"  ? {advisory}")
 
     report = build_report(reviews, directory / "review.html", embed=not args.no_embed)
     size = report.stat().st_size
