@@ -41,7 +41,12 @@ up from `os.environ` with no token ever appearing in a message.
 ## Setup, entirely from the phone
 
 1. **Free Hugging Face token** — in the phone browser, huggingface.co →
-   Settings → Access Tokens → New token, read scope. Copy it.
+   Settings → Access Tokens → New token. **Choose type "Read".** A *fine-grained*
+   token defaults to repository access only, and without an inference permission every
+   call returns 403 no matter how many credits the account has — the provider's error
+   says "check your permissions" without naming which one. If you do want fine-grained,
+   tick **Inference → "Make calls to Inference Providers"**. `--check` verifies this
+   before you spend anything.
 2. **Set it on the environment** — Claude Code web settings → your environment →
    environment variables → `HF_TOKEN`. Not in the chat.
 3. **Confirm** — ask the session to run `python -m src.cli --check`. The `hf` enricher
@@ -86,6 +91,25 @@ player pointed at the container's disk.
 - **Keeping results.** Commit the sidecar JSON. It is small, diffable, and records the
   prompt, provider, model, seed and every parameter, so a run stays reproducible after
   the container is gone. Video files do not belong in git.
+
+## Choosing a video model
+
+No video model is served by the `hf-inference` provider. They all route through a third
+party — fal-ai, replicate, wavespeed — each with its own payload shape, which is why the
+backend uses `huggingface_hub.InferenceClient` rather than hand-rolled HTTP.
+
+What is served changes, so check rather than assume:
+
+```python
+from src.backends.hf import list_served_video_models   # free, metadata only
+list_served_video_models(os.environ["HF_TOKEN"])
+```
+
+Served at the time of writing, cheapest first: `Wan-AI/Wan2.1-T2V-1.3B`,
+`Lightricks/LTX-Video-0.9.7-distilled`, `Wan-AI/Wan2.2-TI2V-5B`,
+`tencent/HunyuanVideo-1.5`, `Wan-AI/Wan2.2-T2V-A14B`. Set `HF_VIDEO_MODEL` to one of
+them. Note that the plain `Lightricks/LTX-Video` id — the obvious guess, and this
+project's original default — is **not** served by anyone.
 
 ## When the free tier runs out
 

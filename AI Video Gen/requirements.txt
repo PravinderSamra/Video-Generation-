@@ -8,7 +8,9 @@ PyYAML>=6.0
 #            Do not install its heavy deps into this project's environment.
 # wan2gp   : clone deepbeepmeep/Wan2GP and run its own install script.
 # comfyui  : clone comfyanonymous/ComfyUI and run its own requirements.
-# hf       : nothing extra — plain HTTPS to router.huggingface.co.
+# hf       : pip install huggingface_hub — no video model is served by
+#            hf-inference, so provider routing (fal-ai/replicate/wavespeed)
+#            is handled by InferenceClient rather than hand-rolled HTTP.
 # ollama   : nothing extra — install the Ollama app, then `ollama pull qwen3:8b`.
 #
 # ffmpeg (system package, not pip) is used by the stub backend to mux frames to MP4.

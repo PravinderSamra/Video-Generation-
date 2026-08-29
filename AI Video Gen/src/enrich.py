@@ -236,6 +236,12 @@ class HFEnricher(Enricher):
         self.settings = settings
         self.model = settings.hf_text_model
 
+    def preflight(self) -> list[str]:
+        from .backends.hf import INFERENCE_PERMISSION_HINT, token_can_call_inference
+
+        ok, detail = token_can_call_inference(self.settings.hf_token or "")
+        return [] if ok else [f"{INFERENCE_PERMISSION_HINT} ({detail})"]
+
     def enrich(self, request: GenerationRequest) -> EnrichedPrompt:
         text = _chat_completion(
             base_url=self.settings.hf_base_url,
