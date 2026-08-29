@@ -1,0 +1,72 @@
+# Fixed benchmark set. Re-run this whenever you change the enrichment template,
+# switch backend, or pull new weights — always at the same seeds.
+#
+# Prompt engineering without a fixed benchmark is guesswork: you remember the good
+# results and forget the bad ones. Ten prompts at fixed seeds make regressions visible.
+#
+#   python -m src.benchmark --dry-run          # enrichment only, free
+#   python -m src.benchmark --backend ltx      # full render
+#
+# Chosen to span the failure modes that actually bite: fur and fast motion, water,
+# human hands and faces, text-free signage, crowds, fine repeating texture.
+
+prompts:
+  - id: fox_snow
+    prompt: a red fox hunting in a snowstorm
+    style: nature_doc
+    seed: 1001
+    tests: fur detail, falling-particle motion, subject against low-contrast background
+
+  - id: harbour_dawn
+    prompt: fishing boats returning to a harbour at dawn
+    style: cinematic
+    seed: 1002
+    tests: water surface coherence, reflections, slow camera movement
+
+  - id: potter_hands
+    prompt: a potter shaping a bowl on a spinning wheel
+    style: documentary
+    seed: 1003
+    tests: hands (the classic diffusion failure), rotational motion, continuous deformation
+
+  - id: neon_alley
+    prompt: rain falling in a narrow neon-lit alley
+    style: cyberpunk
+    seed: 1004
+    tests: reflective wet surfaces, coloured lighting, signage without readable text
+
+  - id: market_crowd
+    prompt: a busy street market in the late afternoon
+    style: documentary
+    seed: 1005
+    tests: many small subjects, crowd coherence, background stability
+
+  - id: candle_still
+    prompt: a single candle burning on a wooden table
+    style: noir
+    seed: 1006
+    tests: subtle motion (a near-static scene should not freeze), high dynamic range
+
+  - id: cyclist_track
+    prompt: a cyclist racing along a coastal road
+    style: cinematic
+    seed: 1007
+    tests: fast lateral motion, tracking shot, motion blur plausibility
+
+  - id: forest_walk
+    prompt: sunlight moving through leaves in a deep forest
+    style: nature_doc
+    seed: 1008
+    tests: fine repeating texture, dappled light, the classic flicker trigger
+
+  - id: robot_workshop
+    prompt: a small robot assembling a clock in a cluttered workshop
+    style: claymation
+    seed: 1009
+    tests: mechanical articulation, cluttered background stability, style adherence
+
+  - id: dancer_stage
+    prompt: a dancer turning slowly under a single spotlight
+    style: anime
+    seed: 1010
+    tests: full-body human motion, limb coherence, hard-edged style rendering

@@ -39,20 +39,25 @@ AI Video Gen/
 ├── .env.example                 copy to .env
 ├── docs/
 │   ├── repo_evaluation.md       the 7 repos evaluated, and why
-│   └── architecture.md          single vs hybrid, data flow, licence notes
+│   ├── architecture.md          single vs hybrid, data flow, licence notes
+│   └── testing.md               the three testing layers
 ├── prompts/
 │   ├── cinematic_enrichment.md  the enrichment system prompt
 │   ├── style_presets.yaml       8 visual styles (cinematic, noir, anime, …)
 │   ├── model_dialects.yaml      per-backbone phrasing guidance
-│   └── negative_prompt.txt      shared negative prompt
+│   ├── negative_prompt.txt      shared negative prompt
+│   └── benchmark.yaml           10 fixed prompts at fixed seeds
 ├── src/
 │   ├── config.py                settings, request/result objects
 │   ├── enrich.py                STAGE 1 — ollama | hf | passthrough
 │   ├── pipeline.py              orchestration + provenance sidecar
 │   ├── cli.py                   command-line entry point
+│   ├── review.py                prompt linter, failure detectors, contact sheets
+│   ├── benchmark.py             runs the fixed benchmark set
+│   ├── imageio.py               stdlib-only PNG read/write
 │   └── backends/                STAGE 2 — ltx | wan2gp | comfyui | hf | stub
 ├── workflows/                   ComfyUI API-format graphs
-├── tests/test_pipeline.py       smoke tests — no GPU, no network
+├── tests/                       smoke tests — no GPU, no network
 └── outputs/                     rendered video + .json provenance record
 ```
 
@@ -65,7 +70,7 @@ AI Video Gen/
 ```bash
 cd "AI Video Gen"
 pip install -r requirements.txt
-python -m tests.test_pipeline
+python -m tests
 python -m src.cli "a red fox in a snowstorm" --enricher passthrough --backend stub --duration 1
 ```
 
@@ -143,17 +148,41 @@ resolved parameter — enough to reproduce it or compare backends fairly.
 
 ---
 
+## Testing and review
+
+Three layers, three instruments — full detail in [`docs/testing.md`](docs/testing.md).
+
+```bash
+python -m tests                       # 1. pipeline correctness (no GPU, ~1s)
+python -m src.review --lint-only      # 2. prompt quality — linted against the template rules
+python -m src.benchmark --dry-run     # 10 fixed prompts at fixed seeds, enrichment only
+python -m src.benchmark --backend ltx # full render of the benchmark set
+python -m src.review outputs/benchmark  # 3. contact sheets + scorecard -> review.html
+```
+
+Layer 3 is the one that matters and the one no tool can answer. `src/review.py` flags
+known failure modes — `FROZEN`, `FLICKER`, `SLIDESHOW`, `FLAT`, `COLLAPSE` — but a clip can
+pass every check and still look wrong. The contact sheet and scorecard exist to make the
+human pass fast and consistent, not to replace it.
+
+The metric thresholds are **provisional** — calibrated against synthetic fixtures, not real
+renders. Recalibrating them against your own output is a Phase 1 task.
+
+---
+
 ## Roadmap
 
 **Phase 0 — Foundation ✅ complete**
 Project structure; repo research; architecture decision; two-stage pipeline with three
 enrichers and five backends behind swappable interfaces; CLI with `--check` and
-`--dry-run`; provenance sidecars; smoke tests passing with no GPU or network.
+`--dry-run`; provenance sidecars. Review tooling: prompt linter, video failure detectors,
+contact sheets, HTML review page, and a 10-prompt benchmark set at fixed seeds. All tests
+pass with no GPU, no network, and no model weights.
 
 **Phase 1 — First real video (~1 hour, mostly downloads)**
 1. `ollama pull qwen3:8b`, confirm with `--check`.
-2. Tune `prompts/cinematic_enrichment.md` against `--dry-run` until enriched prompts read
-   like shot notes. Free and fast — do this *before* touching a GPU.
+2. Tune `prompts/cinematic_enrichment.md` against `--dry-run` + `--lint-only` until the
+   benchmark set lints clean. Free and fast — do this *before* touching a GPU.
 3. Clone LTX-Video, install `.[inference]`, set `LTX_REPO`.
 4. First render at 512×320, 3s, `ltxv-2b-distilled` — smallest thing that proves the path.
 5. Scale to 768×512, 5s, `13b-distilled` once that works.
@@ -163,9 +192,8 @@ enrichers and five backends behind swappable interfaces; CLI with `--check` and
    releases — see the note in `src/backends/wan2gp.py`).
 2. A/B the same enriched prompt across `ltx` and `wan2gp` at a fixed seed. The sidecars
    make this a fair comparison; keep the winners as regression prompts.
-3. Build a small benchmark set (8–10 prompts spanning the style presets) and re-run it
-   whenever the enrichment template changes. Prompt engineering without a fixed benchmark
-   is guesswork.
+3. **Recalibrate the metric thresholds in `src/review.py`** against real output. They are
+   currently set from synthetic fixtures, which is a placeholder, not a calibration.
 4. Tune `model_dialects.yaml` from what you learn — this is where most quality lives.
 
 **Phase 3 — Multi-shot sequences**

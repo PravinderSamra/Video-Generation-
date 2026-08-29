@@ -12,36 +12,13 @@ from __future__ import annotations
 
 import math
 import shutil
-import struct
 import subprocess
 import time
-import zlib
 from pathlib import Path
 
 from ..config import EnrichedPrompt, GenerationRequest
+from ..imageio import Image, write_png
 from .base import BackendError, RenderResult, VideoBackend
-
-
-def _png_chunk(tag: bytes, data: bytes) -> bytes:
-    return (
-        struct.pack(">I", len(data))
-        + tag
-        + data
-        + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
-    )
-
-
-def _write_png(path: Path, width: int, height: int, pixels: bytes) -> None:
-    """Minimal RGB PNG writer — avoids a Pillow dependency for the no-deps path."""
-    raw = b"".join(
-        b"\x00" + pixels[y * width * 3 : (y + 1) * width * 3] for y in range(height)
-    )
-    path.write_bytes(
-        b"\x89PNG\r\n\x1a\n"
-        + _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-        + _png_chunk(b"IDAT", zlib.compress(raw, 6))
-        + _png_chunk(b"IEND", b"")
-    )
 
 
 def _frame_pixels(width: int, height: int, t: float, seed: int) -> bytes:
@@ -82,11 +59,9 @@ class StubBackend(VideoBackend):
 
         for index in range(request.num_frames):
             t = index / max(1, request.num_frames - 1) * 2.0 * math.pi
-            _write_png(
+            write_png(
                 frames_dir / f"frame_{index:04d}.png",
-                width,
-                height,
-                _frame_pixels(width, height, t, request.seed),
+                Image(width, height, _frame_pixels(width, height, t, request.seed)),
             )
 
         notes: list[str] = ["synthetic output — no diffusion model was run"]
