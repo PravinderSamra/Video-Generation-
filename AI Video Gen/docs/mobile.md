@@ -134,8 +134,15 @@ Two traps, both learned by hitting them:
 
 ## When the free tier runs out
 
-It will, quickly. In rough order of what to reach for:
+It will, quickly — measured in this project at **two or three video renders**, not the
+handful of enrichment calls this page originally estimated. Video is priced in
+GPU-seconds; text was the cheap part.
 
+In rough order of what to reach for:
+
+- **Kaggle's free GPU** — 30 GPU-hours a week, no payment method, and it moves you onto
+  the `ltx` backend this project is actually built around. This is the first thing to
+  reach for, not the last. See [`kaggle.md`](kaggle.md).
 - **ZeroGPU Spaces** — free A100 time on accounts with no payment method, with a daily
   quota, callable with your token. Volatile: Spaces appear, change and disappear, so
   treat any specific one as temporary.

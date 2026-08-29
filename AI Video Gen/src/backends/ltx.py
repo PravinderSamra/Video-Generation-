@@ -74,6 +74,10 @@ class LTXBackend(VideoBackend):
         ]
 
         started = time.monotonic()
+        # st_mtime is wall-clock, so _newest_video needs a wall-clock marker, not the
+        # monotonic one used for elapsed. Back it off a second for filesystem timestamp
+        # granularity, which is coarser than a float second on some filesystems.
+        started_wall = time.time() - 1
         result = subprocess.run(command, cwd=repo, capture_output=True, text=True)
         elapsed = time.monotonic() - started
         if result.returncode != 0:
@@ -81,7 +85,7 @@ class LTXBackend(VideoBackend):
                 f"LTX inference.py exited {result.returncode}:\n{result.stderr.strip()[-1500:]}"
             )
 
-        produced = self._newest_video(output_path.parent, started)
+        produced = self._newest_video(output_path.parent, started_wall)
         if produced is None:
             raise BackendError(
                 "LTX reported success but no video appeared in "
@@ -100,11 +104,18 @@ class LTXBackend(VideoBackend):
 
     @staticmethod
     def _newest_video(directory: Path, since: float) -> Path | None:
-        """LTX names its own output file; find whatever it just wrote."""
+        """LTX names its own output file; find whatever it just wrote.
+
+        Only files written by *this* run count. Rendering repeatedly into one output
+        directory otherwise returns a previous clip when the current run writes nothing,
+        pairing stale video with a fresh provenance sidecar — the exact error the
+        sidecar exists to rule out. `since` is wall-clock, to match st_mtime.
+        """
         candidates = [
             path
             for pattern in ("*.mp4", "*.webm")
             for path in directory.glob(pattern)
+            if path.stat().st_mtime >= since
         ]
         if not candidates:
             return None

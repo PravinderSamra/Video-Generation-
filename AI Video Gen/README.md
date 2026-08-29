@@ -41,7 +41,8 @@ AI Video Gen/
 │   ├── repo_evaluation.md       the 7 repos evaluated, and why
 │   ├── architecture.md          single vs hybrid, data flow, licence notes
 │   ├── testing.md               the three testing layers
-│   └── mobile.md                running the whole thing from a phone
+│   ├── mobile.md                running the whole thing from a phone
+│   └── kaggle.md                free GPU rendering, and the cost argument for it
 ├── prompts/
 │   ├── cinematic_enrichment.md  the enrichment system prompt
 │   ├── style_presets.yaml       8 visual styles (cinematic, noir, anime, …)
@@ -58,6 +59,7 @@ AI Video Gen/
 │   ├── benchmark.py             runs the fixed benchmark set
 │   ├── imageio.py               stdlib-only PNG read/write
 │   └── backends/                STAGE 2 — ltx | wan2gp | comfyui | hf | stub
+├── notebooks/                   kaggle_ltx.ipynb — render on Kaggle's free GPU
 ├── workflows/                   ComfyUI API-format graphs
 ├── tests/                       smoke tests — no GPU, no network
 └── outputs/                     rendered video + .json provenance record
@@ -111,7 +113,16 @@ echo "LTX_REPO=$(pwd)/../LTX-Video" >> .env
 python -m src.cli "a red fox in a snowstorm" --style nature_doc --dialect ltx
 ```
 
-### No GPU, or working from a phone?
+### No GPU?
+
+Render on Kaggle's free quota — 30 GPU-hours a week, no payment method. See
+[`docs/kaggle.md`](docs/kaggle.md) and run `notebooks/kaggle_ltx.ipynb`.
+
+The `hf` backend below is the hosted alternative, and it is metered per clip: the free
+tier is worth **two or three renders** before a hard `402`. Use it to prove the path, not
+to iterate.
+
+### Working from a phone?
 
 See [`docs/mobile.md`](docs/mobile.md) — the phone is a terminal, the work happens in a
 cloud container, and the review page publishes as an artifact you can score by tapping.
@@ -147,7 +158,8 @@ Pick a row based on what your machine has — every row costs £0:
 | GPU ≥ 12 GB, offline | `--enricher ollama --backend ltx` |
 | GPU ≥ 16 GB, max quality | `--enricher ollama --backend wan2gp --dialect wan` |
 | GPU 6–8 GB | `--enricher ollama --backend ltx` (2B distilled variant) |
-| No GPU | `--enricher hf --backend hf` |
+| No GPU | Kaggle + `--backend ltx` — see [`docs/kaggle.md`](docs/kaggle.md) |
+| No GPU, one-off | `--enricher hf --backend hf` (metered, ~2–3 clips free) |
 | CI / testing | `--enricher passthrough --backend stub` |
 | Offline demo of enrichment | `--enricher fixture` (benchmark prompts only) |
 
