@@ -1,0 +1,10 @@
+blurry, low quality, low resolution, pixelated, jpeg artifacts, compression artifacts,
+watermark, signature, text, caption, subtitles, logo, ui, hud, timestamp,
+deformed, disfigured, mutated, extra limbs, missing limbs, malformed hands, extra fingers,
+bad anatomy, distorted face, warped features,
+flickering, strobing, temporal instability, morphing, jittery motion, frame tearing,
+static, motionless, frozen frame,
+oversaturated, overexposed, underexposed, washed out, banding,
+duplicate frames, cropped, out of frame, cut off,
+cartoon artifacts when photoreal, uncanny valley,
+grainy noise, dust spots, lens dirt

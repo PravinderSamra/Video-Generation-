@@ -1,0 +1,10 @@
+.env
+outputs/*
+!outputs/.gitkeep
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.mp4
+*.webm
+*.png

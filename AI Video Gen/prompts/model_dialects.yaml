@@ -1,0 +1,27 @@
+# Per-backbone phrasing guidance, injected into {{dialect}}.
+# Different video models were trained on differently-shaped captions; the same idea
+# needs different wording to land well. Sources: upstream model cards and repo docs.
+
+ltx:
+  hint: >
+    Target model: LTX-Video. It responds best to long, densely descriptive natural language
+    with explicit motion described as it unfolds over time. Favour concrete visual nouns and
+    verbs over abstract mood words. Describe what moves and how fast it moves.
+
+wan:
+  hint: >
+    Target model: Wan 2.2. It rewards rich, flowing natural-language description and handles
+    complex scenes and camera moves well. Be generous with detail about lighting, texture and
+    atmosphere. It follows explicit camera-movement language reliably.
+
+hunyuan:
+  hint: >
+    Target model: HunyuanVideo-1.5. Prefers clear subject-action-environment structure stated
+    early, with style and lighting qualifiers following. Keep the primary action unambiguous
+    and stated in the first clause.
+
+generic:
+  hint: >
+    Target model: a general text-to-video diffusion model. Use plain, concrete, visually
+    grounded language. Front-load the most important visual information, since attention to
+    later tokens degrades.

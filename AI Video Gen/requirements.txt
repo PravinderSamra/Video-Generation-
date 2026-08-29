@@ -1,0 +1,14 @@
+# Core pipeline. Deliberately tiny: the orchestration layer uses only the stdlib
+# (urllib for HTTP), so `--enricher passthrough --backend stub` runs anywhere.
+PyYAML>=6.0
+
+# --- Optional, per backend. Install only what you actually use. ---
+#
+# ltx      : clone Lightricks/LTX-Video and `pip install -e .[inference]` there.
+#            Do not install its heavy deps into this project's environment.
+# wan2gp   : clone deepbeepmeep/Wan2GP and run its own install script.
+# comfyui  : clone comfyanonymous/ComfyUI and run its own requirements.
+# hf       : nothing extra — plain HTTPS to router.huggingface.co.
+# ollama   : nothing extra — install the Ollama app, then `ollama pull qwen3:8b`.
+#
+# ffmpeg (system package, not pip) is used by the stub backend to mux frames to MP4.

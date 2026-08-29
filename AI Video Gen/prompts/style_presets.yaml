@@ -1,0 +1,42 @@
+# Style presets injected into {{style}} of prompts/cinematic_enrichment.md
+# Use: python -m src.cli "your idea" --style noir
+
+cinematic:
+  description: >
+    Photoreal cinematic film-making. Shot on 35mm anamorphic, shallow depth of field,
+    natural motivated lighting, subtle film grain, filmic colour grade with lifted blacks.
+
+documentary:
+  description: >
+    Observational documentary realism. Handheld camera with gentle drift, available light
+    only, naturalistic colour, no stylisation, feels unstaged and caught in the moment.
+
+noir:
+  description: >
+    High-contrast black-and-white film noir. Hard key light, deep crushed shadows, venetian
+    blind slats, wet reflective streets, heavy atmosphere, smoke and haze in the air.
+
+anime:
+  description: >
+    Hand-drawn 2D cel animation in modern Japanese style. Clean line art, flat cel shading
+    with hard shadow edges, expressive key poses, painterly background art, vivid saturation.
+
+nature_doc:
+  description: >
+    Wildlife documentary. Long telephoto lens with compressed perspective, creamy bokeh,
+    golden-hour light, patient slow motion, razor-sharp focus on the subject's eye.
+
+retro_8mm:
+  description: >
+    Vintage Super-8 home footage. Heavy grain, gate weave, slight over-exposure, warm faded
+    colour with magenta shift, soft vignette, dust and scratches on the emulsion.
+
+cyberpunk:
+  description: >
+    Neon-soaked cyberpunk night. Rain-slick surfaces, volumetric fog, cyan-and-magenta
+    practical lighting, holographic signage glow, deep blue shadows, anamorphic lens flares.
+
+claymation:
+  description: >
+    Stop-motion claymation. Visible fingerprints and tool marks in the clay, tangible
+    handmade sets, slightly stepped motion at a low frame rate, warm practical studio light.
