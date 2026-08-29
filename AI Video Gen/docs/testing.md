@@ -106,6 +106,26 @@ python -m src.benchmark --only fox_snow,potter_hands
 Re-run it at the **same seeds** whenever you change the template, switch backend, or pull
 new weights. Fixed seeds are what make two runs comparable.
 
+### The golden enrichment set
+
+`prompts/golden_enrichments.yaml` holds one reference enrichment per benchmark prompt,
+served by `--enricher fixture`.
+
+> **Provenance matters here.** These were hand-authored against
+> `prompts/cinematic_enrichment.md`. They are a written-to-spec *target*, not a recording
+> of any model's output. Treating them as "what the enricher produces" would be wrong.
+
+Two uses:
+
+1. **Deterministic enrichment offline** — demos and CI, with no Ollama and no API key.
+2. **A baseline for judging a real enricher.** Run the same benchmark through
+   `--enricher ollama` and compare against these. Output that is shorter, vaguer, or
+   lint-failing means the template or the model needs work — and now you have something
+   concrete to compare against instead of a vague sense that it "reads worse".
+
+A test asserts the golden set stays lint-clean, so a linter rule change or a careless
+fixture edit surfaces immediately rather than quietly degrading the baseline.
+
 ### Human review
 
 ```bash

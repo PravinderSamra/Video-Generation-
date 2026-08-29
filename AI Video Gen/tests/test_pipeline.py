@@ -48,7 +48,7 @@ def test_registries_construct() -> None:
     for name in BACKENDS:
         backend = get_backend(name, settings)
         check(f"backend {name}", isinstance(backend.preflight(), list))
-    check("enrichers registered", set(ENRICHERS) == {"ollama", "hf", "passthrough"})
+    check("enrichers registered", set(ENRICHERS) == {"ollama", "hf", "passthrough", "fixture"})
 
 
 def test_end_to_end() -> None:

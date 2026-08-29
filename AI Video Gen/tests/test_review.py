@@ -160,6 +160,35 @@ def test_detects_collapse() -> None:
     check("detail drop positive", metrics.detail_drop > 0)
 
 
+def test_golden_set_is_lint_clean() -> None:
+    """The reference enrichments must obey the template they were written to.
+
+    This is the guard that keeps prompts/golden_enrichments.yaml honest: if a rule in
+    the linter changes, or someone edits a fixture, the mismatch surfaces here rather
+    than silently degrading the baseline that real enricher output is judged against.
+    """
+    print("golden enrichment set passes its own linter")
+    from src.enrich import FixtureEnricher
+    import yaml as _yaml
+    from src.config import PROMPTS_DIR
+
+    entries = FixtureEnricher()._load()
+    benchmark = _yaml.safe_load(
+        (PROMPTS_DIR / "benchmark.yaml").read_text(encoding="utf-8")
+    )["prompts"]
+
+    check(f"one fixture per benchmark prompt ({len(entries)}/{len(benchmark)})",
+          len(entries) == len(benchmark))
+    for entry in benchmark:
+        check(f"{entry['id']} has a fixture", entry["prompt"].strip().lower() in entries)
+
+    for original, enriched in entries.items():
+        result = lint_prompt(enriched, original)
+        check(f"{original[:38]!r} lints clean", result.ok)
+        for violation in result.violations:
+            print(f"        - {violation}")
+
+
 def test_contact_sheet_geometry() -> None:
     print("contact sheet tiles frames into the expected grid")
     sheet = contact_sheet([drifting(i) for i in range(7)], columns=3, cell_width=20)
@@ -184,6 +213,7 @@ def main() -> int:
         test_detects_slideshow,
         test_detects_flat,
         test_detects_collapse,
+        test_golden_set_is_lint_clean,
         test_contact_sheet_geometry,
     ):
         test()

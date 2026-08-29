@@ -1,0 +1,101 @@
+# Golden enrichment set — one reference enrichment per prompts/benchmark.yaml entry.
+#
+# PROVENANCE: hand-authored against prompts/cinematic_enrichment.md, NOT produced by a
+# live enricher. They are a reference target, not a recording of real model output.
+#
+# Two uses:
+#   1. Deterministic enrichment for CI and offline demos (`--enricher fixture`).
+#   2. A baseline to judge a real enricher against. When Ollama is running, generate the
+#      same benchmark with `--enricher ollama` and compare: shorter, vaguer, or
+#      lint-failing output means the template or the model needs work.
+#
+# Every entry must pass `lint_prompt()`. Keyed by the exact original prompt text.
+
+enrichments:
+  a red fox hunting in a snowstorm: >
+    A lean red fox, its winter coat thick and frost-tipped, wades chest-deep through fresh
+    powder as a snowstorm drives sideways across an open field. It pauses, ears swivelling,
+    then coils and plunges nose-first into the drift, hunting something moving beneath the
+    crust. A long 200mm telephoto holds a low medium shot, compressing the storm into a soft
+    grey wall behind it. Flat overcast light wraps the scene while ice crystals streak past
+    the lens in slow motion. Rust orange, bone white, slate grey and pale blue, on 35mm film
+    with fine natural grain.
+
+  fishing boats returning to a harbour at dawn: >
+    Three weathered fishing boats glide into a stone harbour at dawn, hulls scarred with salt
+    and rust, nets heaped across their decks. Water parts in slow glassy wedges from each bow,
+    carrying the pink of the sky over the surface in long trembling reflections. The camera
+    drifts on a slow lateral track from the quay, 35mm anamorphic, holding a wide shot as the
+    vessels are returning to their moorings. Soft low-angle sunrise light, sea mist hanging
+    at waterline. Pale amber, steel blue, weathered timber and wet stone, fine film grain
+    throughout.
+
+  a potter shaping a bowl on a spinning wheel: >
+    A potter's hands, streaked grey to the wrist, cradle a rising cylinder of wet clay on a
+    spinning wheel, thumbs pressing inward as the wall thins and a bowl opens under steady
+    pressure. Water beads and runs down the mound in thin rivulets. The camera holds a tight
+    high-angle close-up at 50mm, handheld with a faint natural drift, shaping the frame around
+    the hands alone. Available window light from the left, cool and soft, catching the wet
+    sheen. Earth brown, grey slip, pale timber. Naturalistic colour, real-time motion,
+    observational and unstaged.
+
+  rain falling in a narrow neon-lit alley: >
+    Heavy rain is falling through a narrow alley walled in wet brick, every surface slick and
+    mirrored, neon-lit by a dozen humming signs in cyan and magenta. Droplets burst across the
+    puddles and throw broken colour up the walls while steam curls from a grate at street
+    level. A 24mm wide lens pushes slowly forward at chest height, holding the corridor of
+    light in deep perspective. Volumetric haze softens the far end into glow. Electric cyan,
+    hot magenta, deep blue shadow, black asphalt, anamorphic flares streaking across frame.
+
+  a busy street market in the late afternoon: >
+    A busy street market fills the frame in the late afternoon, stalls crowded with fruit,
+    fabric and steel pans under faded canvas awnings. Shoppers move along the aisle in loose
+    overlapping streams, hands lifting produce, vendors leaning across their tables to call
+    out. The camera sits at eye level on a 35mm lens, handheld with gentle drift, holding a
+    wide shot layered in depth from foreground crates to distant rooftops. Low golden sun
+    rakes between the stalls, dust hanging in the beams. Warm ochre, faded red, dusty green,
+    naturalistic colour.
+
+  a single candle burning on a wooden table: >
+    A single candle is burning on a scarred wooden table, its flame leaning and recovering in
+    a slow draught, wax pooling and creeping down one side of the stem. The tabletop grain
+    runs sharp and close across the foreground. An 85mm close-up holds perfectly static at
+    flame height, the background falling into deep crushed black beyond a shallow plane of
+    focus. Hard warm key from the flame itself, extreme contrast, monochrome carrying a faint
+    amber cast. Smoke threads upward in slow curling ribbons. Black, bone white, dim gold,
+    heavy atmospheric haze.
+
+  a cyclist racing along a coastal road: >
+    A lone cyclist in a sweat-darkened jersey is racing along a narrow coastal road, cranks
+    turning hard, body low over the bars as the sea drops away to the left behind a low stone
+    wall. The camera tracks alongside at matched speed on a 50mm lens, holding a tight medium
+    profile shot while the cliff edge and horizon streak past in smooth motion blur. Bright
+    hard afternoon sun from behind rim-lights the rider, tarmac glaring. Sun-bleached asphalt
+    grey, deep sea blue, dry gold grass, 35mm film grain.
+
+  sunlight moving through leaves in a deep forest: >
+    Sunlight is moving through layered leaves high in a deep forest canopy, shifting in slow
+    dappled patches across moss-furred trunks and the litter below. A light breeze turns the
+    foliage so the beams break, scatter and reform continuously. A 135mm telephoto holds a
+    static medium shot among the trees, shallow focus isolating one shaft of light through a
+    gap. Warm hard sun above, cool green shade beneath, volumetric rays cutting through
+    drifting pollen. Emerald, moss green, amber gold, deep umber shadow. Patient real-time
+    motion, documentary realism.
+
+  a small robot assembling a clock in a cluttered workshop: >
+    A small clay robot with mismatched limbs is assembling a brass clock at a cluttered
+    workshop bench, stubby fingers seating a gear into the movement with careful deliberation.
+    Tools, springs and glass jars crowd the surface around it. The camera holds a static
+    medium close-up at 40mm, bench height, the background stacked deep with shelves. Warm
+    practical tungsten light from a bent desk lamp throws hard shadow beneath the hands.
+    Visible fingerprints and tool marks in the clay, tangible handmade set, motion stepping
+    slightly at a low frame rate. Ochre, brass, oxide red, dim brown.
+
+  a dancer turning slowly under a single spotlight: >
+    A dancer in a flowing pale costume is turning slowly under a single hard spotlight on a
+    bare black stage, arms extending as the fabric lifts and trails behind the rotation. Dust
+    motes drift through the beam. The camera holds a static full-body wide shot at 35mm, low
+    angle, the pool of light isolating the figure against total darkness. Hard top key with
+    sharp falloff, cel-shaded hand-drawn animation, clean line art and flat shadow edges. Bone
+    white, warm ivory, black void, one cool blue rim. Expressive keyframed motion, smooth
+    continuous rotation.

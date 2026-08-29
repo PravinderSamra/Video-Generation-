@@ -46,7 +46,8 @@ AI Video Gen/
 │   ├── style_presets.yaml       8 visual styles (cinematic, noir, anime, …)
 │   ├── model_dialects.yaml      per-backbone phrasing guidance
 │   ├── negative_prompt.txt      shared negative prompt
-│   └── benchmark.yaml           10 fixed prompts at fixed seeds
+│   ├── benchmark.yaml           10 fixed prompts at fixed seeds
+│   └── golden_enrichments.yaml  reference enrichments for those 10
 ├── src/
 │   ├── config.py                settings, request/result objects
 │   ├── enrich.py                STAGE 1 — ollama | hf | passthrough
@@ -123,7 +124,7 @@ python -m src.cli "a red fox in a snowstorm" --enricher hf --backend hf
 ```bash
 python -m src.cli PROMPT [options]
 
-  --enricher {ollama,hf,passthrough}         stage 1  (default: ollama)
+  --enricher {ollama,hf,passthrough,fixture} stage 1  (default: ollama)
   --backend  {ltx,wan2gp,comfyui,hf,stub}    stage 2  (default: ltx)
   --style    {cinematic,documentary,noir,anime,nature_doc,retro_8mm,cyberpunk,claymation}
   --dialect  {ltx,wan,hunyuan,generic}       phrasing tuned to the target model
@@ -141,6 +142,7 @@ Pick a row based on what your machine has — every row costs £0:
 | GPU 6–8 GB | `--enricher ollama --backend ltx` (2B distilled variant) |
 | No GPU | `--enricher hf --backend hf` |
 | CI / testing | `--enricher passthrough --backend stub` |
+| Offline demo of enrichment | `--enricher fixture` (benchmark prompts only) |
 
 Every render writes `outputs/<slug>-<seed>.json` alongside the video, recording the
 original prompt, the enriched prompt, the provider, the model, the seed, and every

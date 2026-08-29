@@ -10,6 +10,7 @@ Providers (all free):
   ollama       local LLM on localhost:11434, no API key, works offline   [default]
   hf           Hugging Face Inference Providers, free monthly credits
   passthrough  no-op, for A/B comparison against an unenriched baseline
+  fixture      canned enrichments from prompts/golden_enrichments.yaml (offline/CI)
 """
 
 from __future__ import annotations
@@ -19,7 +20,10 @@ import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 
+import yaml
+
 from .config import (
+    PROMPTS_DIR,
     EnrichedPrompt,
     GenerationRequest,
     Settings,
@@ -214,10 +218,50 @@ class HFEnricher(Enricher):
         return self._wrap(request, _clean(text), [])
 
 
+class FixtureEnricher(Enricher):
+    """Serve hand-authored enrichments from prompts/golden_enrichments.yaml.
+
+    These are a written-to-spec reference target, NOT a recording of real model output.
+    Two uses: deterministic enrichment offline and in CI, and a baseline to judge a live
+    enricher against — run the same benchmark through `ollama` and compare.
+    """
+
+    name = "fixture"
+    model = "golden_enrichments.yaml"
+
+    def __init__(self, settings: Settings | None = None):
+        self.path = PROMPTS_DIR / "golden_enrichments.yaml"
+
+    def _load(self) -> dict[str, str]:
+        if not self.path.is_file():
+            return {}
+        data = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
+        return {
+            key.strip().lower(): " ".join(value.split())
+            for key, value in (data.get("enrichments") or {}).items()
+        }
+
+    def preflight(self) -> list[str]:
+        if not self.path.is_file():
+            return [f"{self.path} is missing"]
+        return []
+
+    def enrich(self, request: GenerationRequest) -> EnrichedPrompt:
+        entries = self._load()
+        text = entries.get(request.prompt.strip().lower())
+        if text is None:
+            raise EnrichmentError(
+                f"no fixture for {request.prompt!r}. The fixture enricher only covers the "
+                f"benchmark set ({len(entries)} entries) — use --enricher ollama for new prompts."
+            )
+        return self._wrap(request, text, ["hand-authored fixture, not live model output"])
+
+
 ENRICHERS = {
     "ollama": OllamaEnricher,
     "hf": HFEnricher,
     "passthrough": PassthroughEnricher,
+    "fixture": FixtureEnricher,
 }
 
 
@@ -225,4 +269,4 @@ def get_enricher(name: str, settings: Settings) -> Enricher:
     if name not in ENRICHERS:
         raise EnrichmentError(f"unknown enricher {name!r}. Choose from: {', '.join(ENRICHERS)}")
     cls = ENRICHERS[name]
-    return cls() if cls is PassthroughEnricher else cls(settings)
+    return cls() if cls in (PassthroughEnricher, FixtureEnricher) else cls(settings)
