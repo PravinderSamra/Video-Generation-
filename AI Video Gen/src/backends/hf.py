@@ -31,12 +31,18 @@ from .base import BackendError, RenderResult, VideoBackend
 
 # Served at time of writing, cheapest first. Verify before trusting — see the docstring.
 KNOWN_SERVED = (
-    "Wan-AI/Wan2.1-T2V-1.3B",
-    "Lightricks/LTX-Video-0.9.7-distilled",
     "Wan-AI/Wan2.2-TI2V-5B",
+    "Lightricks/LTX-Video-0.9.7-distilled",
     "tencent/HunyuanVideo-1.5",
     "Wan-AI/Wan2.2-T2V-A14B",
 )
+
+# Listed live by the HF model metadata, but fal-ai's own route 404s
+# ("Path /v2.1/1.3b/text-to-video not found"). The metadata is not authoritative:
+# a model can be advertised and still be unroutable, so keep this list separate.
+KNOWN_UNROUTABLE = {
+    "Wan-AI/Wan2.1-T2V-1.3B": "fal-ai no longer serves this route, despite HF listing it as live",
+}
 
 
 # A fine-grained token defaults to repo access only. Without the inference permission
@@ -129,6 +135,8 @@ class HFBackend(VideoBackend):
         return problems
 
     def warnings(self) -> list[str]:
+        if self.model in KNOWN_UNROUTABLE:
+            return [f"{self.model}: {KNOWN_UNROUTABLE[self.model]} — set HF_VIDEO_MODEL"]
         if self.model not in KNOWN_SERVED:
             return [
                 f"{self.model} was not in the served list when this was written — "
@@ -154,12 +162,24 @@ class HFBackend(VideoBackend):
             video = client.text_to_video(
                 prompt.enriched,
                 model=self.model,
-                negative_prompt=[prompt.negative],
+                negative_prompt=prompt.negative,
                 num_frames=float(request.num_frames),
                 num_inference_steps=request.steps,
                 guidance_scale=request.guidance,
                 seed=request.seed,
             )
+        except KeyError as exc:
+            # The client parses the provider's reply as {"video": {"url": ...}}. When the
+            # provider returns an error dict instead, the parse dies on the missing key and
+            # the real cause — a dead route, or a rejected parameter — is lost. Name it.
+            if exc.args and exc.args[0] == "video":
+                raise BackendError(
+                    f"{self.model} did not return a video. The provider replied with an "
+                    "error instead — usually a route that no longer exists, or a rejected "
+                    f"parameter. {KNOWN_UNROUTABLE.get(self.model, '')} "
+                    "Check `list_served_video_models()` and set HF_VIDEO_MODEL."
+                ) from exc
+            raise
         except Exception as exc:  # the client raises a wide range of provider errors
             message = str(exc)
             if "403" in message or "sufficient permissions" in message:
