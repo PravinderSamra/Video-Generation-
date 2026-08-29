@@ -32,7 +32,15 @@ Measured, not estimated: **roughly 14 enrichment calls exhausted a full month of
 
 Plan for a handful of calls per month on the free tier, not a loop.
 
-**3. Do not paste secrets into the chat.** Anything typed into the conversation is in the
+**3. A session pins its environment at provisioning time.** Rotating a token in the web
+settings does **not** reach a session that is already running — and a container restart
+does not refresh it either. The value stays byte-identical, so every diagnostic points at
+the token while the real problem is delivery. `--check` prints a token fingerprint for
+this reason: if you rotated the token and the fingerprint has not changed, the session is
+pinned. Start a new session, or drop the value in `.env.local`, which overrides the
+environment (and is gitignored).
+
+**4. Do not paste secrets into the chat.** Anything typed into the conversation is in the
 transcript. Set `HF_TOKEN` as an **environment variable on the environment itself**,
 configured in the Claude Code web settings — see
 [the docs](https://code.claude.com/docs/en/claude-code-on-the-web). The session picks it

@@ -19,9 +19,7 @@ OUTPUTS_DIR = ROOT / "outputs"
 DOCS_DIR = ROOT / "docs"
 
 
-def load_dotenv(path: Path | None = None) -> None:
-    """Seed os.environ from a .env file. Real environment variables always win."""
-    path = path or (ROOT / ".env")
+def _read_env_file(path: Path, override: bool) -> None:
     if not path.is_file():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -29,7 +27,25 @@ def load_dotenv(path: Path | None = None) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+        key, value = key.strip(), value.strip().strip("'\"")
+        if override:
+            os.environ[key] = value
+        else:
+            os.environ.setdefault(key, value)
+
+
+def load_dotenv(path: Path | None = None) -> None:
+    """Seed os.environ from .env, then let .env.local override it.
+
+    .env follows the usual rule: real environment variables win. That breaks down when
+    the environment itself holds a stale value you cannot change from where you are
+    sitting — a hosted session pins its environment configuration at provisioning time,
+    so a token you rotated afterwards never reaches the process, and every diagnostic
+    points at the token rather than at the delivery. .env.local exists for exactly that:
+    it wins over the environment. Keep it out of version control (it is gitignored).
+    """
+    _read_env_file(path or (ROOT / ".env"), override=False)
+    _read_env_file(ROOT / ".env.local", override=True)
 
 
 def _yaml(name: str) -> dict[str, Any]:

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import textwrap
 
@@ -83,6 +84,17 @@ def run_check(settings: Settings) -> int:
             report(name, get_backend(name, settings))
         except BackendError as exc:
             report(name, None, str(exc))
+
+    token = settings.hf_token
+    if token:
+        import hashlib
+
+        digest = hashlib.sha256(token.encode()).hexdigest()[:8]
+        source = "env" if os.environ.get("HF_TOKEN") == token else ".env/.env.local"
+        print(f"\nHF_TOKEN  {token[:7]}... (sha {digest}, from {source})")
+        print("  If you rotated this token and the fingerprint has not changed, the value "
+              "is pinned\n  to this session. Start a new session, or put it in .env.local "
+              "which overrides the\n  environment.")
 
     print(f"\nOutputs -> {OUTPUTS_DIR}")
     print("Nothing ready? `--enricher passthrough --backend stub` always works.")
