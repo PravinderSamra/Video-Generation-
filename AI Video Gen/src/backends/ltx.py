@@ -25,40 +25,72 @@ import yaml
 from ..config import EnrichedPrompt, GenerationRequest, Settings
 from .base import BackendError, RenderResult, VideoBackend
 
-# Run LTX through this rather than its inference.py, to load the text encoder at the
-# dtype it ends up at anyway. See its docstring for why that is
-# the difference between rendering on a 16 GB card and not rendering at all.
-LAUNCHER = '''"""Run LTX inference with the text encoder loaded straight to bfloat16.
+# Run LTX through this rather than its inference.py: upstream's pipeline construction
+# does not fit a 16 GB card, and the fix is placement, not settings. See the docstring.
+LAUNCHER = '''"""Run LTX inference, placing the models so a 16 GB card can hold them.
 
-Upstream builds the pipeline like this (ltx_video/inference.py):
+`create_ltx_video_pipeline` moves the transformer, VAE and text encoder onto the GPU
+together, before anything can offload them. Measured on a T4 for 2b-distilled that is
+3.58 + 4.65 + 8.87 = 17.10 GB against 14.56 GB usable, so it OOMs while loading, and no
+choice of variant or resolution helps -- the models are the size they are. Two of those
+figures are also inflated: upstream loads the VAE and text encoder in float32 and casts
+both to bfloat16 immediately *after* moving them, so the float32 copies are transients
+that only ever needed to exist on the CPU.
 
-    text_encoder = T5EncoderModel.from_pretrained(...)   # no dtype -> float32
-    text_encoder = text_encoder.to(device)               # ~17 GB onto the GPU
-    ...
-    text_encoder = text_encoder.to(torch.bfloat16)       # halved, but too late
+None of that eager placement is necessary. The pipeline already moves the text encoder
+in before encoding and out after it, and the transformer in for denoising and out again.
+So we build on the CPU and let it do that, which leaves a peak around 11.8 GB.
 
-The encoder is T5-XXL. bfloat16 is what it runs at either way, so the float32 copy
-is a transient that never needed to reach the card -- but it is moved there first,
-and on a 16 GB GPU that OOMs before a single frame is denoised. Loading at the final
-dtype leaves the pipeline in exactly the state upstream builds, minus the spike.
+The VAE is the exception, pinned to the GPU throughout: its normalisation statistics are
+read as plain buffers outside forward(), so nothing moves them on demand, and at 2.3 GB
+in bfloat16 it is the one model cheap enough to keep resident.
 
-This lives here, not in the clone: LTX stays a pristine checkout we shell into, so
-an upstream fix for this simply makes the shim a no-op rather than a conflict.
+accelerate's enable_model_cpu_offload() looks like the supported way to do this and is
+not: maybe_free_model_hooks() re-runs it at the end of every inner pass, re-hooking the
+VAE and pulling it back to the CPU mid-render.
+
+This lives here rather than in the clone, so LTX stays a pristine checkout we shell into
+and an upstream fix turns the shim into a no-op rather than a conflict.
 """
 import torch
 from transformers import HfArgumentParser
 
 import ltx_video.inference as ltx
+import ltx_video.pipelines.pipeline_ltx_video as pipeline_module
 
-_from_pretrained = ltx.T5EncoderModel.from_pretrained
+DEVICE = ltx.get_device()
 
+if DEVICE != "cpu":
+    # Load at the dtype upstream casts to anyway; the float32 copies stay off the card.
+    _text_encoder = ltx.T5EncoderModel.from_pretrained
+    ltx.T5EncoderModel.from_pretrained = lambda *a, **k: _text_encoder(
+        *a, **{**k, "torch_dtype": torch.bfloat16}
+    )
+    _autoencoder = ltx.CausalVideoAutoencoder.from_pretrained
+    ltx.CausalVideoAutoencoder.from_pretrained = lambda *a, **k: _autoencoder(*a, **k).to(
+        torch.bfloat16
+    )
 
-def _load_in_bfloat16(*args, **kwargs):
-    kwargs.setdefault("torch_dtype", torch.bfloat16)
-    return _from_pretrained(*args, **kwargs)
+    _create_pipeline = ltx.create_ltx_video_pipeline
 
+    def _create_on_cpu(*args, **kwargs):
+        kwargs["device"] = "cpu"
+        pipeline = _create_pipeline(*args, **kwargs)
+        pipeline.vae.to(DEVICE)
+        return pipeline
 
-ltx.T5EncoderModel.from_pretrained = _load_in_bfloat16
+    ltx.create_ltx_video_pipeline = _create_on_cpu
+
+    # The models now genuinely straddle two devices, so the inherited property would
+    # report whichever one it finds first. State it instead.
+    pipeline_module.LTXVideoPipeline._execution_device = property(
+        lambda self: torch.device(DEVICE)
+    )
+
+    # Built from pipeline.device upstream, which is now the CPU, while the latents it
+    # is asserted against are produced on DEVICE.
+    _create_upsampler = ltx.create_latent_upsampler
+    ltx.create_latent_upsampler = lambda path, device: _create_upsampler(path, DEVICE)
 
 ltx.infer(config=HfArgumentParser(ltx.InferenceConfig).parse_args_into_dataclasses()[0])
 '''
@@ -122,11 +154,10 @@ class LTXBackend(VideoBackend):
                 "--seed", str(request.seed),
                 "--pipeline_config", str(self._pipeline_config(repo, Path(tmp))),
                 "--output_path", str(output_path.parent),
-                # Frees the text encoder after encoding and the transformer after
-                # denoising. It applies to the render, not to pipeline construction, so
-                # it is headroom rather than the fix for the OOM there — that is LAUNCHER.
-                # Upstream self-disables it above 30 GB of VRAM, so passing it always
-                # costs a large card nothing.
+                # Load-bearing alongside LAUNCHER, not a nicety: it is what evicts the
+                # text encoder once it has encoded. Leaving it resident through denoising
+                # is 8.87 + 3.58 + 2.33 = 14.78 GB, over a T4 again. Upstream self-
+                # disables it above 30 GB of VRAM, so a large card pays nothing for it.
                 "--offload_to_cpu",
             ]
 
