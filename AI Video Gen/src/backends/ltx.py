@@ -1,4 +1,4 @@
-"""LTX-Video backend — local generation via the upstream `inference.py` CLI.
+"""LTX-Video backend — local generation via the upstream LTX inference entrypoint.
 
 Default backend: best quality-per-VRAM-per-second of the options evaluated, Apache-2.0,
 and the only one with a clean documented single-command CLI.
@@ -8,7 +8,9 @@ Setup:
     python -m pip install -e .[inference]
     echo "LTX_REPO=$(pwd)" >> "<project>/.env"
 
-We shell out rather than importing, so upstream refactors cannot break us.
+We shell out rather than importing, so upstream refactors cannot break us. The
+subprocess runs LAUNCHER, a shim that imports LTX in its own environment; the
+clone itself is never modified.
 """
 
 from __future__ import annotations
@@ -22,6 +24,44 @@ import yaml
 
 from ..config import EnrichedPrompt, GenerationRequest, Settings
 from .base import BackendError, RenderResult, VideoBackend
+
+# Run LTX through this rather than its inference.py, to load the text encoder at the
+# dtype it ends up at anyway. See its docstring for why that is
+# the difference between rendering on a 16 GB card and not rendering at all.
+LAUNCHER = '''"""Run LTX inference with the text encoder loaded straight to bfloat16.
+
+Upstream builds the pipeline like this (ltx_video/inference.py):
+
+    text_encoder = T5EncoderModel.from_pretrained(...)   # no dtype -> float32
+    text_encoder = text_encoder.to(device)               # ~17 GB onto the GPU
+    ...
+    text_encoder = text_encoder.to(torch.bfloat16)       # halved, but too late
+
+The encoder is T5-XXL. bfloat16 is what it runs at either way, so the float32 copy
+is a transient that never needed to reach the card -- but it is moved there first,
+and on a 16 GB GPU that OOMs before a single frame is denoised. Loading at the final
+dtype leaves the pipeline in exactly the state upstream builds, minus the spike.
+
+This lives here, not in the clone: LTX stays a pristine checkout we shell into, so
+an upstream fix for this simply makes the shim a no-op rather than a conflict.
+"""
+import torch
+from transformers import HfArgumentParser
+
+import ltx_video.inference as ltx
+
+_from_pretrained = ltx.T5EncoderModel.from_pretrained
+
+
+def _load_in_bfloat16(*args, **kwargs):
+    kwargs.setdefault("torch_dtype", torch.bfloat16)
+    return _from_pretrained(*args, **kwargs)
+
+
+ltx.T5EncoderModel.from_pretrained = _load_in_bfloat16
+
+ltx.infer(config=HfArgumentParser(ltx.InferenceConfig).parse_args_into_dataclasses()[0])
+'''
 
 # Pipeline configs shipped by the upstream repo, cheapest first.
 PIPELINE_CONFIGS = {
@@ -69,8 +109,10 @@ class LTXBackend(VideoBackend):
         assert repo is not None  # guaranteed by preflight
 
         with tempfile.TemporaryDirectory() as tmp:
+            launcher = Path(tmp) / "run_ltx.py"
+            launcher.write_text(LAUNCHER, encoding="utf-8")
             command = [
-                "python", "inference.py",
+                "python", str(launcher),
                 "--prompt", prompt.enriched,
                 "--negative_prompt", prompt.negative,
                 "--height", str(request.height),
@@ -80,8 +122,11 @@ class LTXBackend(VideoBackend):
                 "--seed", str(request.seed),
                 "--pipeline_config", str(self._pipeline_config(repo, Path(tmp))),
                 "--output_path", str(output_path.parent),
-                # Upstream self-disables this above 30 GB of VRAM, so it is safe to pass
-                # always: it is what makes a 16 GB card (Kaggle, Colab) fit at all.
+                # Frees the text encoder after encoding and the transformer after
+                # denoising. It applies to the render, not to pipeline construction, so
+                # it is headroom rather than the fix for the OOM there — that is LAUNCHER.
+                # Upstream self-disables it above 30 GB of VRAM, so passing it always
+                # costs a large card nothing.
                 "--offload_to_cpu",
             ]
 
@@ -94,7 +139,7 @@ class LTXBackend(VideoBackend):
             elapsed = time.monotonic() - started
         if result.returncode != 0:
             raise BackendError(
-                f"LTX inference.py exited {result.returncode}:\n{result.stderr.strip()[-1500:]}"
+                f"LTX inference exited {result.returncode}:\n{result.stderr.strip()[-1500:]}"
             )
 
         produced = self._newest_video(output_path.parent, started_wall)
@@ -119,12 +164,15 @@ class LTXBackend(VideoBackend):
 
         LTX re-enriches any prompt shorter than `prompt_enhancement_words_threshold`
         words by loading Florence-2-large and Llama-3.2-3B onto the *same* card as the
-        transformer. That is wrong for us twice over. It is ~8 GB on top of a budget
-        that already only just fits 16 GB — the OOM a Kaggle T4 dies on. And this
-        pipeline has already enriched: stage one produced `prompt.enriched`, and the
-        sidecar records it as what was rendered. Letting LTX rewrite the prompt after
-        that makes the sidecar describe something other than the clip beside it, which
-        is the one claim the sidecar exists to make.
+        transformer. Ours are always shorter than the shipped threshold of 120, so it
+        always fires.
+
+        This is a provenance fix, not a memory one — the enhancer is loaded after the
+        point a 16 GB card runs out of VRAM, so it is LAUNCHER, not this, that makes
+        the render fit. What it costs us is the sidecar: stage one already produced
+        `prompt.enriched`, and the sidecar records it as what was rendered. Letting LTX
+        rewrite the prompt after that makes the sidecar describe something other than
+        the clip beside it, which is the one claim the sidecar exists to make.
 
         The threshold is only readable from the config file — there is no CLI override —
         so the switch is a patched copy. Model paths inside resolve through
