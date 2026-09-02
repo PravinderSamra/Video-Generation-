@@ -6,7 +6,10 @@ priced in GPU-seconds, and the practical result is **two or three clips** before
 that involves rendering the same prompt twenty times.
 
 Kaggle sells the opposite unit: **30 GPU-hours per week, free**, no payment method. At
-roughly a minute per clip that is hundreds of renders a week, and the meter stops mattering.
+a few minutes per clip that is well over a hundred renders a week, and the meter stops
+mattering. (One measured 3s 512x320 clip on a T4 took 342s end to end, but that run also
+pulled the weights; steady-state renders are faster, and the figure has not been pinned
+down across a batch yet.)
 
 `notebooks/kaggle_ltx.ipynb` is the notebook. This page is why it is shaped the way it is.
 
@@ -28,8 +31,13 @@ the case they are worst at, because every iteration is a full-price render.
 
 Kaggle's free GPUs are 16 GB — T4 x2, or P100. That constrains which model fits:
 
-- **LTX 2B distilled** fits comfortably. This is the reliable default, and what the
-  notebook selects on a 16 GB card.
+- **LTX 2B distilled** fits, but not by simply asking for it. Measured on a T4, the three
+  models want 17.10 GB together — VAE 4.65, transformer 3.58, text encoder 8.87 — against
+  14.56 GB usable, and upstream's `inference.py` moves all three onto the card at once,
+  before anything can offload them. Unaided it OOMs while loading, whatever resolution or
+  duration you ask for. The `ltx` backend therefore builds the pipeline on the CPU and
+  lets it move each model in as it is needed, which peaks at 11.8 GB. This is the reliable
+  default, and what the notebook selects on a 16 GB card.
 - **LTX 13B distilled** does not fit in 16 GB without offloading, and offloading is slow
   enough to spend the quota you came here to save.
 
@@ -101,14 +109,24 @@ CLI rather than importing it, so the two dependency sets never have to agree and
 upstream refactor cannot break the pipeline. Installing LTX into the project's own
 environment would give up that isolation for nothing.
 
-## Two settings that are not on by default
+## Three settings that are not on by default
 
-Both in the notebook's right-hand panel, and both easy to lose an hour to:
+The first is on the account; the other two are in the notebook's right-hand panel. All
+three are easy to lose an hour to, because none of them fails in a way that says so.
 
-1. **Accelerator → GPU T4 x2.** Otherwise everything runs on CPU. A render that should
+1. **Phone verification**, once, in Kaggle Settings. It gates **both** the GPU and
+   Internet, and nothing reports that it is missing: the session is simply handed a CPU
+   worker with no network, whatever the notebook asks for. If the accelerator is set to
+   GPU and `nvidia-smi` still is not there, this is why — check it before debugging
+   anything else.
+2. **Accelerator → GPU T4 x2.** Otherwise everything runs on CPU. A render that should
    take a minute takes hours, and nothing warns you.
-2. **Internet → On.** Needed to clone and to pull weights. Kaggle gates this behind phone
-   verification on the account — a one-time step in Settings.
+3. **Internet → On.** Needed to clone and to pull weights.
+
+Pushing the notebook through the Kaggle API has one more trap of the same shape:
+`enable_gpu: true` on its own is not enough. The server stores it as the legacy machine
+shape `Gpu` and still schedules a CPU worker. Set `machine_shape` to `NvidiaTeslaT4`
+(the API's documented values are `NvidiaTeslaT4`, `NvidiaTeslaP100`, `Tpu1VmV38`).
 
 Quota is billed by **session wall-clock, not GPU work**. An idle notebook costs the same
 as a busy one, so stop the session when you stop working.
