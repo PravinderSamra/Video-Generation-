@@ -93,6 +93,7 @@ class Settings:
     wan2gp_url: str = "http://localhost:7860"
     comfyui_url: str = "http://localhost:8188"
     ltx_repo: Path | None = None
+    ltx_variant: str = "13b-distilled"
     request_timeout: int = 180
 
     @classmethod
@@ -109,6 +110,7 @@ class Settings:
             wan2gp_url=os.environ.get("WAN2GP_URL", cls.wan2gp_url),
             comfyui_url=os.environ.get("COMFYUI_URL", cls.comfyui_url),
             ltx_repo=Path(ltx).expanduser() if ltx else None,
+            ltx_variant=os.environ.get("LTX_VARIANT", cls.ltx_variant),
             request_timeout=int(os.environ.get("REQUEST_TIMEOUT", cls.request_timeout)),
         )
 

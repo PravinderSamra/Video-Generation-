@@ -31,7 +31,11 @@ PIPELINE_CONFIGS = {
 class LTXBackend(VideoBackend):
     name = "ltx"
 
-    def __init__(self, settings: Settings, variant: str = "13b-distilled"):
+    def __init__(self, settings: Settings, variant: str | None = None):
+        # The variant decides whether the weights fit the card. A 16 GB GPU (Kaggle's
+        # free T4, and Colab's) holds 2b-distilled but not 13b, so this has to be
+        # selectable without editing code — set LTX_VARIANT, as .env.local does.
+        variant = variant or settings.ltx_variant
         if variant not in PIPELINE_CONFIGS:
             raise BackendError(
                 f"unknown LTX variant {variant!r}. Choose from: {', '.join(PIPELINE_CONFIGS)}"

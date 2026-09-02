@@ -50,7 +50,7 @@ shows a download card with no preview, and mobile file pickers often will not of
 New Notebook -> File -> Import Notebook -> the GitHub/URL option, and paste:
 
 ```
-https://github.com/PravinderSamra/Video-Generation-/blob/claude/ai-video-gen-setup-j8r9y4/AI%20Video%20Gen/notebooks/kaggle_ltx.ipynb
+https://github.com/PravinderSamra/Video-Generation-/blob/main/AI%20Video%20Gen/notebooks/kaggle_ltx.ipynb
 ```
 
 The `%20` matter — the directory name contains spaces, and an unencoded URL 404s.
@@ -59,15 +59,24 @@ The `%20` matter — the directory name contains spaces, and an unencoded URL 40
 notebook's setup cells do, so nothing needs importing:
 
 ```python
-BRANCH = "claude/ai-video-gen-setup-j8r9y4"   # until PR #1 merges; then "main"
-
-!git clone --depth 1 -b {BRANCH} https://github.com/PravinderSamra/Video-Generation-.git /kaggle/working/vg
+!git clone --depth 1 https://github.com/PravinderSamra/Video-Generation-.git /kaggle/working/vg
 !git clone --depth 1 https://github.com/Lightricks/LTX-Video.git /kaggle/working/ltx
 !pip install -q -e '/kaggle/working/ltx[inference]' PyYAML
 
-import os, pathlib
+import os, pathlib, shutil, subprocess
+
+if shutil.which('nvidia-smi') is None:
+    raise SystemExit('No GPU. Sidebar -> Accelerator -> GPU T4 x2, then re-run.')
+mib = subprocess.run(
+    ['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
+    capture_output=True, text=True, check=True).stdout.split()[0]
+
+# 13b-distilled does not fit a 16 GB card. LTX_VARIANT must be set, or the backend
+# defaults to 13b and the render dies on the weights.
+VARIANT = '13b-distilled' if int(mib) / 1024 >= 22 else '2b-distilled'
+
 PKG = pathlib.Path('/kaggle/working/vg/AI Video Gen')
-(PKG / '.env.local').write_text('LTX_REPO=/kaggle/working/ltx\n')
+(PKG / '.env.local').write_text(f'LTX_REPO=/kaggle/working/ltx\nLTX_VARIANT={VARIANT}\n')
 os.chdir(PKG)
 
 !python -m src.cli --check
@@ -81,8 +90,9 @@ Then render with a second cell:
     --seed 1001 --width 512 --height 320 --duration 3
 ```
 
-Note the branch: PR #1 is unmerged at the time of writing, so `main` does not yet carry
-the `ltx` backend fix this path depends on. Point it at `main` once that merges.
+`LTX_VARIANT` is the load-bearing line. The `ltx` backend defaults to `13b-distilled`,
+which needs more than a 16 GB card has, so a Kaggle session that does not set it fails
+on the weights rather than on anything you would recognise as a configuration mistake.
 
 ## Why the notebook clones twice
 
