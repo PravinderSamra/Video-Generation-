@@ -89,7 +89,7 @@ class Settings:
     hf_token: str | None = None
     hf_base_url: str = "https://router.huggingface.co/v1"
     hf_text_model: str = "Qwen/Qwen3-8B"
-    hf_video_model: str = "Wan-AI/Wan2.1-T2V-1.3B"  # smallest served model
+    hf_video_model: str = "Wan-AI/Wan2.2-TI2V-5B"  # smallest reliably-routed model
     wan2gp_url: str = "http://localhost:7860"
     comfyui_url: str = "http://localhost:8188"
     ltx_repo: Path | None = None

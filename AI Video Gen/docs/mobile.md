@@ -113,16 +113,36 @@ from src.backends.hf import list_served_video_models   # free, metadata only
 list_served_video_models(os.environ["HF_TOKEN"])
 ```
 
-Served at the time of writing, cheapest first: `Wan-AI/Wan2.1-T2V-1.3B`,
-`Lightricks/LTX-Video-0.9.7-distilled`, `Wan-AI/Wan2.2-TI2V-5B`,
+Served at the time of writing, cheapest first: `Wan-AI/Wan2.2-TI2V-5B` (the default,
+and verified end to end), `Lightricks/LTX-Video-0.9.7-distilled`,
 `tencent/HunyuanVideo-1.5`, `Wan-AI/Wan2.2-T2V-A14B`. Set `HF_VIDEO_MODEL` to one of
 them. Note that the plain `Lightricks/LTX-Video` id — the obvious guess, and this
 project's original default — is **not** served by anyone.
 
+Two traps, both learned by hitting them:
+
+- **The listing is not a guarantee.** `Wan-AI/Wan2.1-T2V-1.3B` — the previous default,
+  and still reported live by the metadata above — 404s at fal-ai's own route
+  (`Path /v2.1/1.3b/text-to-video not found`). Being advertised and being routable are
+  different things, so a model that fails immediately is worth retrying elsewhere before
+  you assume the fault is yours.
+- **A provider error arrives as a missing key.** `InferenceClient` parses the reply as
+  `{"video": {"url": …}}`; when the provider returns an error dict instead, the parse
+  fails on the absent key and the real message is lost. `src/backends/hf.py` now catches
+  that and says what happened, but if you ever see a bare `KeyError: 'video'` from a
+  newer client, the provider is telling you something — dump the response body first.
+
 ## When the free tier runs out
 
-It will, quickly. In rough order of what to reach for:
+It will, quickly — measured in this project at **two or three video renders**, not the
+handful of enrichment calls this page originally estimated. Video is priced in
+GPU-seconds; text was the cheap part.
 
+In rough order of what to reach for:
+
+- **Kaggle's free GPU** — 30 GPU-hours a week, no payment method, and it moves you onto
+  the `ltx` backend this project is actually built around. This is the first thing to
+  reach for, not the last. See [`kaggle.md`](kaggle.md).
 - **ZeroGPU Spaces** — free A100 time on accounts with no payment method, with a daily
   quota, callable with your token. Volatile: Spaces appear, change and disappear, so
   treat any specific one as temporary.
