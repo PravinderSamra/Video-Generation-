@@ -40,6 +40,50 @@ than the hosted API, and it unlocks `--backend wan2gp` as well.
 Use each for what it is good at: **Kaggle to develop taste across many clips**, a rented
 card for the final renders where model size actually shows.
 
+## Getting the notebook into Kaggle from a phone
+
+Uploading a `.ipynb` from a handset is the fiddly part: the file is JSON, so the app
+shows a download card with no preview, and mobile file pickers often will not offer a
+`.ipynb` for selection at all. Two ways round it, neither involving a file.
+
+**Import by URL.** The repo is public, so Kaggle can pull the notebook directly —
+New Notebook -> File -> Import Notebook -> the GitHub/URL option, and paste:
+
+```
+https://github.com/PravinderSamra/Video-Generation-/blob/claude/ai-video-gen-setup-j8r9y4/AI%20Video%20Gen/notebooks/kaggle_ltx.ipynb
+```
+
+The `%20` matter — the directory name contains spaces, and an unencoded URL 404s.
+
+**Or paste one cell.** Open a blank Kaggle notebook and paste this. It does what the
+notebook's setup cells do, so nothing needs importing:
+
+```python
+BRANCH = "claude/ai-video-gen-setup-j8r9y4"   # until PR #1 merges; then "main"
+
+!git clone --depth 1 -b {BRANCH} https://github.com/PravinderSamra/Video-Generation-.git /kaggle/working/vg
+!git clone --depth 1 https://github.com/Lightricks/LTX-Video.git /kaggle/working/ltx
+!pip install -q -e '/kaggle/working/ltx[inference]' PyYAML
+
+import os, pathlib
+PKG = pathlib.Path('/kaggle/working/vg/AI Video Gen')
+(PKG / '.env.local').write_text('LTX_REPO=/kaggle/working/ltx\n')
+os.chdir(PKG)
+
+!python -m src.cli --check
+```
+
+Then render with a second cell:
+
+```python
+!python -m src.cli "a red fox hunting in a snowstorm" \
+    --enricher fixture --backend ltx --style nature_doc \
+    --seed 1001 --width 512 --height 320 --duration 3
+```
+
+Note the branch: PR #1 is unmerged at the time of writing, so `main` does not yet carry
+the `ltx` backend fix this path depends on. Point it at `main` once that merges.
+
 ## Why the notebook clones twice
 
 LTX-Video's inference extras are heavy and pinned. The `ltx` backend shells out to its
