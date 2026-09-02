@@ -145,12 +145,20 @@ contradicts that advice. Narrow it to the video extensions if you want the recor
 
 ## Credentials
 
-The notebook reads an optional Kaggle Secret named `GITHUB_TOKEN` (Add-ons → Secrets) for
-a private clone. Do not paste a token into a cell — notebook source is saved with the
-notebook, and Kaggle notebooks are shareable.
+Two optional Kaggle Secrets (Add-ons → Secrets), both read by the notebook:
 
-`HF_TOKEN` is not needed here at all. Nothing in this path calls Inference Providers,
-which is the point.
+- **`HF_TOKEN`** — what lets you render a prompt of your own. Rendering never calls a
+  hosted API, but *enrichment* needs a language model, and on Kaggle it is the only one
+  available: Ollama wants a local server there is none of, and the fixture enricher is a
+  lookup table covering only the ten benchmark prompts. Without this secret a new prompt
+  falls through to `passthrough`, which sends your words to the video model unenriched —
+  it works, but it skips the stage that makes the output good. The notebook says which
+  enricher it settled on, and why.
+- **`GITHUB_TOKEN`** — only for cloning a private fork.
+
+Do not paste either into a cell: notebook source is saved with the notebook, and Kaggle
+notebooks are shareable. For the same reason the setup cell writes `.env.local` without
+echoing it — printing that file would put the token in saved output.
 
 ## When Kaggle is the wrong tool
 
